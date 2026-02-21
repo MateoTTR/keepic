@@ -25,6 +25,7 @@ export class KeePicDatabase {
     this._db = new BetterSqlite3(this.path)
     this._db.pragma('journal_mode = WAL')
     this._db.pragma('foreign_keys = ON')
+    this._db.pragma('busy_timeout = 5000')
     this.runMigrations()
   }
 

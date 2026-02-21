@@ -39,5 +39,8 @@ export const migrations: readonly string[] = [
     last_imported_date    TEXT,
     last_page_token       TEXT
   );
-  `
+  `,
+
+  // Migration 1 → 2: add deleted_at to track files removed from the shared library
+  `ALTER TABLE photos ADD COLUMN deleted_at TEXT;`
 ]

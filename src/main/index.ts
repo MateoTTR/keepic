@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
+import { Worker } from 'worker_threads'
 import { is } from '@electron-toolkit/utils'
 import { ConfigManager } from './config'
 import { KeePicDatabase } from './db/database'
@@ -46,6 +47,11 @@ app.whenReady().then(() => {
     database.open()
   }
 
+  // Track the running indexer worker to prevent concurrent runs.
+  let indexerWorker: Worker | null = null
+
+  // --- Config IPC ---
+
   ipcMain.handle('config:get', () => handleGetConfig(configManager))
 
   ipcMain.handle('config:select-library-folder', async () => {
@@ -61,6 +67,42 @@ app.whenReady().then(() => {
     }
 
     return result
+  })
+
+  // --- Library indexer IPC ---
+
+  ipcMain.handle('library:start-index', (event) => {
+    if (indexerWorker) {
+      return { alreadyRunning: true }
+    }
+
+    const libraryPath = configManager.get().libraryPath
+    if (!libraryPath) {
+      return { error: 'No library path configured' }
+    }
+
+    const workerPath = join(__dirname, '../workers/indexer.worker.js')
+    const dbPath = join(app.getPath('userData'), 'index.db')
+
+    indexerWorker = new Worker(workerPath, {
+      workerData: { libraryPath, dbPath }
+    })
+
+    indexerWorker.on('message', (msg: { type: string }) => {
+      if (msg.type === 'progress') {
+        event.sender.send('library:index-progress', msg)
+      } else if (msg.type === 'complete' || msg.type === 'error') {
+        event.sender.send('library:index-complete', msg)
+        indexerWorker = null
+      }
+    })
+
+    indexerWorker.on('error', (err: Error) => {
+      event.sender.send('library:index-complete', { type: 'error', message: err.message })
+      indexerWorker = null
+    })
+
+    return { started: true }
   })
 
   createWindow()

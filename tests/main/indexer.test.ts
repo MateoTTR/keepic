@@ -1,0 +1,362 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, utimesSync, chmodSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { KeePicDatabase } from '../../src/main/db/database'
+import { scanLibraryFiles, runIndexer } from '../../src/main/indexer'
+import type { ExifLoader } from '../../src/main/exif'
+import type { PhashComputer } from '../../src/main/phash'
+
+// ---------------------------------------------------------------------------
+// Fixtures / helpers
+// ---------------------------------------------------------------------------
+
+function makeTempDir(): string {
+  return mkdtempSync(join(tmpdir(), 'keepic-indexer-test-'))
+}
+
+/** Creates a minimal 1-byte file (not a real image — fine for tests using mock PhashComputer). */
+function touch(filePath: string): void {
+  writeFileSync(filePath, 'x', 'utf-8')
+}
+
+/** Builds a library folder structure and returns the root path. */
+function buildLibrary(root: string, structure: Record<string, string[]>): void {
+  for (const [folder, files] of Object.entries(structure)) {
+    const dir = join(root, ...folder.split('/'))
+    mkdirSync(dir, { recursive: true })
+    for (const file of files) {
+      touch(join(dir, file))
+    }
+  }
+}
+
+/** Mock ExifLoader — always returns null (falls back to mtime). */
+const nullExifLoader: ExifLoader = async () => null
+
+/** Mock PhashComputer — returns a predictable hash based on the file path. */
+const mockPhashComputer: PhashComputer = async (filePath: string) => ({
+  phash: Buffer.from(filePath).toString('hex').slice(0, 16).padEnd(16, '0'),
+  width: 100,
+  height: 100
+})
+
+/** Mock PhashComputer that always returns null (e.g. unsupported format). */
+const nullPhashComputer: PhashComputer = async () => null
+
+function openDb(dbDir: string): KeePicDatabase {
+  const db = new KeePicDatabase(join(dbDir, 'index.db'))
+  db.open()
+  return db
+}
+
+function getAllPhotos(db: KeePicDatabase): { path: string; deleted_at: string | null }[] {
+  return db.db.prepare('SELECT path, deleted_at FROM photos ORDER BY path').all() as {
+    path: string
+    deleted_at: string | null
+  }[]
+}
+
+// ---------------------------------------------------------------------------
+// scanLibraryFiles
+// ---------------------------------------------------------------------------
+
+describe('scanLibraryFiles', () => {
+  let libraryRoot: string
+
+  beforeEach(() => {
+    libraryRoot = makeTempDir()
+  })
+
+  afterEach(() => {
+    rmSync(libraryRoot, { recursive: true, force: true })
+  })
+
+  it('returns an empty array for an empty library', () => {
+    expect(scanLibraryFiles(libraryRoot)).toEqual([])
+  })
+
+  it('returns an empty array for a non-existent library path', () => {
+    expect(scanLibraryFiles('/nonexistent/library')).toEqual([])
+  })
+
+  it('finds images in monthly folders', () => {
+    buildLibrary(libraryRoot, {
+      '2025/2025.01': ['photo1.jpg', 'photo2.jpeg']
+    })
+    const files = scanLibraryFiles(libraryRoot)
+    expect(files).toContain('2025/2025.01/photo1.jpg')
+    expect(files).toContain('2025/2025.01/photo2.jpeg')
+  })
+
+  it('finds images in event folders', () => {
+    buildLibrary(libraryRoot, {
+      '2025/2025.04.15-19.Londres': ['IMG_001.jpg']
+    })
+    const files = scanLibraryFiles(libraryRoot)
+    expect(files).toContain('2025/2025.04.15-19.Londres/IMG_001.jpg')
+  })
+
+  it('ignores root-level folders that are not year folders', () => {
+    buildLibrary(libraryRoot, {
+      'ignore-me/2025.01': ['photo.jpg'],
+      random: ['photo.jpg']
+    })
+    const files = scanLibraryFiles(libraryRoot)
+    expect(files).toHaveLength(0)
+  })
+
+  it('ignores non-image files', () => {
+    buildLibrary(libraryRoot, {
+      '2025/2025.01': ['photo.jpg', 'document.pdf', 'notes.txt', 'video.mp4']
+    })
+    const files = scanLibraryFiles(libraryRoot)
+    expect(files).toEqual(['2025/2025.01/photo.jpg'])
+  })
+
+  it('handles all supported image extensions', () => {
+    const extensions = [
+      'a.jpg',
+      'b.jpeg',
+      'c.heic',
+      'd.heif',
+      'e.png',
+      'f.tiff',
+      'g.tif',
+      'h.cr2',
+      'i.nef',
+      'j.arw'
+    ]
+    buildLibrary(libraryRoot, { '2025/2025.01': extensions })
+    const files = scanLibraryFiles(libraryRoot)
+    expect(files).toHaveLength(extensions.length)
+  })
+
+  it('handles extension case-insensitively', () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['PHOTO.JPG', 'IMG.HEIC'] })
+    const files = scanLibraryFiles(libraryRoot)
+    expect(files).toHaveLength(2)
+  })
+
+  it('scans multiple year and sub-folders', () => {
+    buildLibrary(libraryRoot, {
+      '2024/2024.12': ['old.jpg'],
+      '2025/2025.01': ['new1.jpg', 'new2.png'],
+      '2025/2025.06.21.Mariage': ['wedding.heic']
+    })
+    const files = scanLibraryFiles(libraryRoot)
+    expect(files).toHaveLength(4)
+  })
+
+  it('ignores non-directory entries directly inside a year folder', () => {
+    mkdirSync(join(libraryRoot, '2025'), { recursive: true })
+    writeFileSync(join(libraryRoot, '2025', 'stray.jpg'), 'x')
+    buildLibrary(libraryRoot, { '2025/2025.01': ['photo.jpg'] })
+    const files = scanLibraryFiles(libraryRoot)
+    expect(files).toEqual(['2025/2025.01/photo.jpg'])
+  })
+
+  it('silently skips a year folder whose contents cannot be read', () => {
+    mkdirSync(join(libraryRoot, '2025'), { recursive: true })
+    buildLibrary(libraryRoot, { '2026/2026.01': ['photo.jpg'] })
+    const restricted = join(libraryRoot, '2025')
+    chmodSync(restricted, 0o000)
+    try {
+      const files = scanLibraryFiles(libraryRoot)
+      expect(files.every((f) => !f.startsWith('2025/'))).toBe(true)
+      expect(files.some((f) => f.startsWith('2026/'))).toBe(true)
+    } finally {
+      chmodSync(restricted, 0o755)
+    }
+  })
+
+  it('silently skips a subfolder whose contents cannot be read', () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': [], '2025/2025.02': ['photo.jpg'] })
+    const restricted = join(libraryRoot, '2025/2025.01')
+    chmodSync(restricted, 0o000)
+    try {
+      const files = scanLibraryFiles(libraryRoot)
+      expect(files.every((f) => !f.includes('2025.01'))).toBe(true)
+      expect(files).toContain('2025/2025.02/photo.jpg')
+    } finally {
+      chmodSync(restricted, 0o755)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// runIndexer
+// ---------------------------------------------------------------------------
+
+describe('runIndexer', () => {
+  let libraryRoot: string
+  let dbDir: string
+  let db: KeePicDatabase
+
+  beforeEach(() => {
+    libraryRoot = makeTempDir()
+    dbDir = makeTempDir()
+    db = openDb(dbDir)
+  })
+
+  afterEach(() => {
+    db.close()
+    rmSync(libraryRoot, { recursive: true, force: true })
+    rmSync(dbDir, { recursive: true, force: true })
+  })
+
+  const opts = { loadExif: nullExifLoader, computePhash: mockPhashComputer }
+
+  it('returns zeroes for an empty library', async () => {
+    const result = await runIndexer(libraryRoot, db, () => {}, opts)
+    expect(result).toEqual({ indexed: 0, skipped: 0, deleted: 0 })
+  })
+
+  it('uses default ExifLoader and PhashComputer when options are omitted', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['photo.jpg'] })
+    // Default loaders gracefully return null for non-real image files
+    const result = await runIndexer(libraryRoot, db, () => {})
+    expect(result.indexed).toBe(1)
+  })
+
+  it('indexes new photos and returns correct counts', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['a.jpg', 'b.jpg'] })
+    const result = await runIndexer(libraryRoot, db, () => {}, opts)
+    expect(result.indexed).toBe(2)
+    expect(result.skipped).toBe(0)
+    expect(result.deleted).toBe(0)
+  })
+
+  it('inserts photos with correct paths and filenames', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.03': ['photo.jpg'] })
+    await runIndexer(libraryRoot, db, () => {}, opts)
+    const rows = getAllPhotos(db)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].path).toBe('2025/2025.03/photo.jpg')
+  })
+
+  it('stores phash from the mock computer', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['img.jpg'] })
+    await runIndexer(libraryRoot, db, () => {}, opts)
+    const row = db.db
+      .prepare('SELECT phash FROM photos WHERE path = ?')
+      .get('2025/2025.01/img.jpg') as { phash: string }
+    expect(row.phash).toHaveLength(16)
+  })
+
+  it('stores null phash when PhashComputer returns null', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['raw.cr2'] })
+    await runIndexer(libraryRoot, db, () => {}, {
+      loadExif: nullExifLoader,
+      computePhash: nullPhashComputer
+    })
+    const row = db.db
+      .prepare('SELECT phash, width, height FROM photos WHERE path = ?')
+      .get('2025/2025.01/raw.cr2') as {
+      phash: string | null
+      width: number | null
+      height: number | null
+    }
+    expect(row.phash).toBeNull()
+    expect(row.width).toBeNull()
+    expect(row.height).toBeNull()
+  })
+
+  it('skips unchanged files on second run', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['photo.jpg'] })
+    await runIndexer(libraryRoot, db, () => {}, opts)
+    const result2 = await runIndexer(libraryRoot, db, () => {}, opts)
+    expect(result2.indexed).toBe(0)
+    expect(result2.skipped).toBe(1)
+  })
+
+  it('re-indexes a file whose mtime has changed', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['photo.jpg'] })
+    await runIndexer(libraryRoot, db, () => {}, opts)
+
+    // Force a distinct mtime — write + explicitly set mtime 2 seconds in the future
+    const filePath = join(libraryRoot, '2025/2025.01/photo.jpg')
+    writeFileSync(filePath, 'updated content', 'utf-8')
+    const futureTime = new Date(Date.now() + 2000)
+    utimesSync(filePath, futureTime, futureTime)
+
+    const result2 = await runIndexer(libraryRoot, db, () => {}, opts)
+    expect(result2.indexed).toBe(1)
+    expect(result2.skipped).toBe(0)
+  })
+
+  it('marks photos as deleted when they are removed from disk', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['keep.jpg', 'remove.jpg'] })
+    await runIndexer(libraryRoot, db, () => {}, opts)
+
+    // Remove one file
+    rmSync(join(libraryRoot, '2025/2025.01/remove.jpg'))
+
+    const result2 = await runIndexer(libraryRoot, db, () => {}, opts)
+    expect(result2.deleted).toBe(1)
+
+    const rows = getAllPhotos(db)
+    const removed = rows.find((r) => r.path === '2025/2025.01/remove.jpg')
+    expect(removed?.deleted_at).not.toBeNull()
+
+    const kept = rows.find((r) => r.path === '2025/2025.01/keep.jpg')
+    expect(kept?.deleted_at).toBeNull()
+  })
+
+  it('revives a previously deleted photo when it reappears', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['photo.jpg'] })
+    await runIndexer(libraryRoot, db, () => {}, opts)
+
+    rmSync(join(libraryRoot, '2025/2025.01/photo.jpg'))
+    await runIndexer(libraryRoot, db, () => {}, opts)
+
+    // Re-add the file with an explicitly distinct mtime to ensure re-indexing
+    const readdedPath = join(libraryRoot, '2025/2025.01/photo.jpg')
+    touch(readdedPath)
+    const futureTime = new Date(Date.now() + 2000)
+    utimesSync(readdedPath, futureTime, futureTime)
+    await runIndexer(libraryRoot, db, () => {}, opts)
+
+    const rows = getAllPhotos(db)
+    expect(rows[0].deleted_at).toBeNull()
+  })
+
+  it('reports progress via the onProgress callback', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['a.jpg', 'b.jpg', 'c.jpg'] })
+    const progressEvents: { processed: number; total: number }[] = []
+    await runIndexer(libraryRoot, db, (p) => progressEvents.push(p), opts)
+    expect(progressEvents).toHaveLength(3)
+    expect(progressEvents[0].processed).toBe(1)
+    expect(progressEvents[0].total).toBe(3)
+    expect(progressEvents[2].processed).toBe(3)
+  })
+
+  it('sets source to "local" for indexer-discovered photos', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['photo.jpg'] })
+    await runIndexer(libraryRoot, db, () => {}, opts)
+    const row = db.db
+      .prepare('SELECT source FROM photos WHERE path = ?')
+      .get('2025/2025.01/photo.jpg') as { source: string }
+    expect(row.source).toBe('local')
+  })
+
+  it('preserves existing source on re-index', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['photo.jpg'] })
+    await runIndexer(libraryRoot, db, () => {}, opts)
+
+    // Manually change source to simulate a google_photos import
+    db.db
+      .prepare("UPDATE photos SET source = 'google_photos' WHERE path = ?")
+      .run('2025/2025.01/photo.jpg')
+
+    // Force re-index by changing mtime
+    const filePath = join(libraryRoot, '2025/2025.01/photo.jpg')
+    writeFileSync(filePath, 'new content', 'utf-8')
+    await runIndexer(libraryRoot, db, () => {}, opts)
+
+    const row = db.db
+      .prepare('SELECT source FROM photos WHERE path = ?')
+      .get('2025/2025.01/photo.jpg') as { source: string }
+    expect(row.source).toBe('google_photos')
+  })
+})

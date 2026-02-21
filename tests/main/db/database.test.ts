@@ -66,6 +66,14 @@ describe('KeePicDatabase', () => {
       kdb.close()
     })
 
+    it('adds the deleted_at column to photos', () => {
+      const kdb = new KeePicDatabase(':memory:')
+      kdb.open()
+      const cols = kdb.db.prepare("PRAGMA table_info('photos')").all() as { name: string }[]
+      expect(cols.some((c) => c.name === 'deleted_at')).toBe(true)
+      kdb.close()
+    })
+
     it('creates the import_jobs table', () => {
       const kdb = new KeePicDatabase(':memory:')
       kdb.open()
@@ -76,11 +84,19 @@ describe('KeePicDatabase', () => {
       kdb.close()
     })
 
-    it('sets user_version to 1 after migration', () => {
+    it('enables busy_timeout', () => {
+      const kdb = new KeePicDatabase(':memory:')
+      kdb.open()
+      const timeout = kdb.db.pragma('busy_timeout', { simple: true })
+      expect(timeout).toBe(5000)
+      kdb.close()
+    })
+
+    it('sets user_version to 2 after all migrations', () => {
       const kdb = new KeePicDatabase(':memory:')
       kdb.open()
       const version = kdb.db.pragma('user_version', { simple: true })
-      expect(version).toBe(1)
+      expect(version).toBe(2)
       kdb.close()
     })
 
@@ -92,11 +108,11 @@ describe('KeePicDatabase', () => {
         kdb1.open()
         kdb1.close()
 
-        // Second open: user_version=1 already, no migration should run
+        // Second open: user_version=2 already, no migration should run
         const kdb2 = new KeePicDatabase(path)
         kdb2.open()
         const version = kdb2.db.pragma('user_version', { simple: true })
-        expect(version).toBe(1)
+        expect(version).toBe(2)
         kdb2.close()
       } finally {
         cleanup(path)
