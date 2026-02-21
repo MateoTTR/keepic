@@ -42,6 +42,12 @@ export interface AppConfig {
   }
 }
 
+export interface SelectLibraryFolderResult {
+  cancelled: boolean
+  path?: string
+  error?: string
+}
+
 export interface ImportProgress {
   total: number
   processed: number
