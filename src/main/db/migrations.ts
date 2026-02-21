@@ -1,0 +1,43 @@
+/**
+ * SQLite migrations for KeePic.
+ *
+ * Each entry is a SQL string applied in a single transaction.
+ * The index corresponds to the schema version after the migration runs
+ * (migrations[0] brings the DB from version 0 to version 1, etc.).
+ *
+ * Never modify an existing migration — always append a new one.
+ */
+export const migrations: readonly string[] = [
+  // Migration 0 → 1: initial schema
+  `
+  CREATE TABLE photos (
+    id                INTEGER PRIMARY KEY,
+    path              TEXT    NOT NULL UNIQUE,
+    filename          TEXT    NOT NULL,
+    phash             TEXT,
+    date_taken        TEXT,
+    date_taken_source TEXT,
+    width             INTEGER,
+    height            INTEGER,
+    file_size         INTEGER,
+    file_mtime        TEXT,
+    source            TEXT    NOT NULL,
+    google_id         TEXT,
+    imported_at       TEXT    NOT NULL,
+    created_at        TEXT    NOT NULL
+  );
+
+  CREATE TABLE import_jobs (
+    id                    INTEGER PRIMARY KEY,
+    source                TEXT    NOT NULL,
+    started_at            TEXT    NOT NULL,
+    finished_at           TEXT,
+    status                TEXT    NOT NULL,
+    photos_imported       INTEGER NOT NULL DEFAULT 0,
+    photos_skipped        INTEGER NOT NULL DEFAULT 0,
+    live_photos_discarded INTEGER NOT NULL DEFAULT 0,
+    last_imported_date    TEXT,
+    last_page_token       TEXT
+  );
+  `
+]
