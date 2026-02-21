@@ -1,7 +1,8 @@
 # KeePic — Architecture Overview
 
-> **Status**: Draft v0.2 — 2026-02-21
+> **Status**: Draft v0.3 — 2026-02-21
 > **Changelog**:
+> - v0.3: Multi-user shared folder, append-only policy, per-instance local index, folder naming convention (YYYY/YYYY.MM/), event folders manual, year-based filtering. CI/CD + Git Flow added.
 > - v0.2: ADR-001 closed (Electron + TypeScript). App data separated from library folder. HEIC/Live Photo handling added. Browse feature deferred.
 > - v0.1: Initial draft.
 
@@ -9,46 +10,29 @@
 
 ## 1. System Context
 
-KeePic is a **single-user desktop application** (Electron, Windows + macOS) with no backend server. It runs entirely on the user's machine. The only external dependency is the Google Photos API, called exclusively when the user explicitly triggers an import.
+KeePic is a **desktop application** (Electron, Windows + macOS) used by **multiple users** who share a common library folder synchronized via a Synology NAS (Synology Drive). Each user runs their own instance of KeePic with its own local index. There is no central server — the shared folder is the single source of truth for photo files.
 
-The library folder (raw photos only) is kept clean and sync-safe. All app working data lives separately in the OS app data directory.
+The app is **append-only**: it never modifies or deletes files already in the shared folder.
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        User's Machine                            │
-│                                                                  │
-│   ┌──────────────────────────────────────────────────────────┐  │
-│   │                    KeePic (Electron)                     │  │
-│   │                                                          │  │
-│   │  ┌──────────────┐   ┌─────────────────┐                 │  │
-│   │  │  Renderer    │   │   Main Process  │                 │  │
-│   │  │  (Web UI /   │◄─►│   (Node.js /    │                 │  │
-│   │  │   TypeScript)│   │   TypeScript)   │                 │  │
-│   │  └──────────────┘   └────────┬────────┘                 │  │
-│   │                              │                           │  │
-│   │                    ┌─────────┼──────────┐               │  │
-│   │                    ▼         ▼          ▼               │  │
-│   │              Worker      Worker     Worker              │  │
-│   │              (EXIF)     (pHash)   (HEIC conv.)         │  │
-│   └──────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│   ┌─────────────────────┐   ┌──────────────────────────────┐   │
-│   │   Library Folder    │   │     OS App Data Directory     │   │
-│   │  (user-configured)  │   │  (%APPDATA%\KeePic\ or       │   │
-│   │  ← Synology Drive   │   │  ~/Library/Applic. Support/) │   │
-│   │                     │   │                              │   │
-│   │  YYYY/MM/DD/        │   │  index.db  config.json       │   │
-│   │  *.jpg *.heic ...   │   │  thumbs/   temp/             │   │
-│   └─────────────────────┘   └──────────────────────────────┘   │
-│                                                                  │
-│         ┌──────────────────────────────────────┐               │
-│         │           Import Sources             │               │
-│         │  SD Card / Camera  Local Folders     │               │
-│         │  WhatsApp folder                     │               │
-│         └──────────────────────┬───────────────┘               │
-└────────────────────────────────┼─────────────────────────────── ┘
-                                 │ (internet, explicit user action)
-                        Google Photos API
+┌────────────────────────────────────────────────────────────────────┐
+│  User A's Machine                   User B's Machine              │
+│  ┌───────────────────────┐          ┌───────────────────────┐     │
+│  │  KeePic (Electron)    │          │  KeePic (Electron)    │     │
+│  │  Main + Workers + UI  │          │  Main + Workers + UI  │     │
+│  │  App Data:            │          │  App Data:            │     │
+│  │  index.db config.json │          │  index.db config.json │     │
+│  │  temp/        thumbs/ │          │  temp/        thumbs/ │     │
+│  └───────────┬───────────┘          └───────────┬───────────┘     │
+└──────────────┼───────────────────────────────────┼────────────────┘
+               │                                   │
+     ┌─────────▼───────────────────────▼──────────┐
+     │           Shared Library Folder             │
+     │    2025/2025.01/  2025/2025.04.15-19.../   │
+     │    2026/2026.01/  ...                       │
+     └──────────────────────┬──────────────────────┘
+                            ↕ Synology Drive sync
+                       Synology NAS
 ```
 
 ---
@@ -68,6 +52,8 @@ The library folder (raw photos only) is kept clean and sync-safe. All app workin
 | OAuth / keychain | `keytar` | OS keychain on Windows + macOS |
 | Background workers | Node.js `worker_threads` | CPU-intensive tasks off the main thread |
 | Packaging | `electron-builder` | NSIS installer (Windows), DMG (macOS) |
+| Test framework | Jest or Vitest (TBD in TASK-003) | 100% coverage on non-frontend code |
+| CI/CD | GitHub Actions | Lint, test, coverage gate, release builds |
 
 ---
 
@@ -95,20 +81,58 @@ Separate threads spawned by the main process for CPU-intensive tasks:
 - **EXIF worker**: reads EXIF from image files, applies fallback date chain
 - **pHash worker**: computes perceptual hash for duplicate detection
 - **HEIC conversion worker**: converts HEIC → JPEG using `sharp`, preserves EXIF
+- **Index worker**: scans the shared library folder, upserts DB records
 
 ### 3.4 Storage
-- **Library folder**: `YYYY/MM/DD/<filename>` — raw photos only, sync-safe
-- **App data (OS standard dir)**:
-  - `index.db`: SQLite — photo records, import history, album memberships
-  - `config.json`: library folder path, user preferences (HEIC conversion on/off, JPEG quality)
-  - `temp/`: import staging area — files are staged here before being moved to library
-  - `thumbs/`: thumbnail cache (future use)
+
+**Shared library folder** (raw photos only, sync-safe — never contains app data):
+```
+<library_root>/                          ← user-configured, synced by Synology Drive
+├── 2025/                                ← year folder (only \d{4} folders are scanned)
+│   ├── 2025.01/                         ← monthly folder (created by app on import)
+│   ├── 2025.01.31-02.02.Center.Parcs/   ← event folder (created manually by users)
+│   ├── 2025.04/
+│   └── 2025.04.15-19.Londres/
+└── 2026/
+    └── 2026.01/
+```
+
+**Per-user app data** (OS standard directory, never synced):
+```
+Windows:  %APPDATA%\KeePic\
+macOS:    ~/Library/Application Support/KeePic/
+├── config.json    ← library path, user preferences
+├── index.db       ← SQLite: photo hashes, metadata, import history
+├── thumbs/        ← thumbnail cache (future use)
+└── temp/          ← import staging area (cleaned after each import)
+```
 
 ---
 
 ## 4. Key Data Flows
 
-### 4.1 Import from Local Folder / SD Card
+### 4.1 Library Index Build / Refresh
+
+```
+Trigger: app startup or user request
+        │
+        ▼
+Index worker: walk all folders matching \d{4} at library root
+  (all other root-level folders are ignored)
+        │
+        ▼
+For each image file found:
+  ├─ Path + mtime unchanged → skip (already indexed)
+  └─ New or modified:
+       ├─ Read EXIF → extract date
+       ├─ Compute pHash
+       └─ Upsert record in index.db
+        │
+        ▼
+Mark DB records for files no longer on disk as deleted
+```
+
+### 4.2 Import from Local Folder / SD Card
 
 ```
 User selects source folder
@@ -117,18 +141,18 @@ User selects source folder
 Scan source → list of image files
         │
         ▼
-Detect iPhone Live Photo pairs (HEIC + MOV same basename)
-  → Keep HEIC, discard MOV (count discarded, report at end)
+Detect iPhone Live Photo pairs (.HEIC + .MOV, same basename)
+  → Mark MOV for discard; keep HEIC only
         │
         ▼
-For each image file → Worker threads (parallel):
-  ├─ EXIF worker: extract date (fallback chain)
-  ├─ pHash worker: compute perceptual hash
+For each image → parallel worker threads:
+  ├─ EXIF worker: extract capture date (fallback chain)
+  └─ pHash worker: compute perceptual hash
         │
         ▼
-Check pHash in DB → duplicate?
-  ├─ YES → queue for user review (side-by-side diff)
-  └─ NO  → continue
+Check pHash against index.db:
+  ├─ Match found → queue for duplicate review (side-by-side UI)
+  └─ No match → continue
         │
         ▼
 HEIC conversion worker (if enabled in settings):
@@ -136,53 +160,43 @@ HEIC conversion worker (if enabled in settings):
   └─ Copy EXIF metadata to JPEG
         │
         ▼
-Move file from temp/ to library/YYYY/MM/DD/filename
+Destination: library_root/YYYY/YYYY.MM/filename
+  → Create year + monthly folder if not present
+  → Never overwrite existing file without explicit confirmation
         │
         ▼
-Insert record in SQLite DB
+Move file from temp/ to library; upsert in index.db
+        │
+        ▼
+Import summary: N imported, M duplicates, K Live Photo videos discarded
 ```
 
-### 4.2 Import from Google Photos
+### 4.3 Import from Google Photos
 
 ```
-User triggers Google Photos import
-  → Enter start date (photos from this date onwards)
+User opens Google Photos import
         │
         ▼
-OAuth 2.0 → access token (from OS keychain or new auth)
+App pre-fills start date = day after last successfully imported photo
+  (from import_jobs table; empty on first import)
+  User can adjust the date before confirming
         │
         ▼
-Fetch media items from API:
-  - Filter: creationTime >= start date
-  - Paginated, incremental (skip google_id already in DB)
+OAuth 2.0 → access token (from OS keychain, or new browser auth flow)
+        │
+        ▼
+Fetch media items: creationTime >= start date, paginated
+  → Skip items whose google_id is already in index.db
         │
         ▼
 For each new item:
   ├─ Download to temp/
   ├─ Detect Live Photo MOV → discard
-  ├─ pHash check → duplicate review if needed
-  ├─ HEIC conversion if enabled
-  └─ Move to library + insert in DB
+  ├─ pHash check + HEIC conversion (same pipeline as local import)
+  └─ Move to library_root/YYYY/YYYY.MM/ + upsert in index.db
         │
         ▼
-Update last_sync_timestamp in import_jobs table
-```
-
-### 4.3 Re-index Library
-
-```
-User triggers re-index (or library folder changed)
-        │
-        ▼
-Scan library folder recursively → list of image files
-        │
-        ▼
-For each file:
-  ├─ Check if path already in DB → skip if unchanged (mtime match)
-  ├─ Otherwise: read EXIF, compute pHash → upsert in DB
-        │
-        ▼
-Remove DB records for files no longer on disk
+Record import job in import_jobs (last imported date, count)
 ```
 
 ---
@@ -197,10 +211,30 @@ Remove DB records for files no longer on disk
 
 ---
 
-## 6. Open Architecture Questions
+## 6. Development Process
 
-- UI framework: React vs Svelte (decided during TASK-003 scaffold)
+### Git Flow
+
+| Branch | Purpose |
+|---|---|
+| `main` | Production-ready code only. Never commit directly. |
+| `develop` | Integration branch. All features merge here first. |
+| `feature/TASK-NNN-short-desc` | One branch per task, branched from `develop` |
+| `release/vX.Y.Z` | Release preparation, branched from `develop` |
+| `hotfix/short-desc` | Critical fixes from `main`, merged to `main` + `develop` |
+
+### CI/CD (GitHub Actions)
+
+- **On every PR and push to `develop` / `main`**: lint → TypeScript type-check → tests → coverage gate
+- **Coverage gate**: 100% coverage on all non-frontend code (main process, workers, shared utilities)
+- **On `main` tag**: `electron-builder` produces Windows (NSIS) + macOS (DMG) installers as GitHub Release assets
+
+---
+
+## 7. Open Architecture Questions
+
+- UI framework: React vs Svelte (TASK-003)
+- Test framework: Jest vs Vitest (TASK-003)
 - pHash library: `imghash` vs `blockhash` — benchmark needed
-- HEIC conversion: use `sharp` directly or wrap in a dedicated service module?
-- Temp folder cleanup strategy: clean on app start, on import completion, or both?
-- Re-index trigger: automatic (file watcher on library folder) or manual only?
+- Temp folder cleanup: on app start, after each import, or both?
+- Re-index trigger: automatic on startup or manual only?

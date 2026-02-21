@@ -2,7 +2,9 @@
 
 ## Project Overview
 
-**KeePic** is a desktop application (Electron or Tauri — see ADR-001) that allows the user to import, deduplicate, organize, and browse their personal photo library. All photos and metadata are stored locally. There is no cloud backend.
+**KeePic** is a cross-platform desktop application (Electron, Windows + macOS) that allows multiple users to import, deduplicate, and organize their photos into a shared local library folder. The shared folder is synchronized via a Synology NAS. All photos and metadata are stored locally. There is no cloud backend.
+
+The app is **append-only**: it never modifies or deletes files already in the shared library.
 
 ## How to Use This File
 
@@ -24,8 +26,8 @@ At the start of each session, read this file entirely, then follow the "Session 
 
 | ID | Title | Status |
 |---|---|---|
-| [ADR-001](docs/architecture/adr/ADR-001-desktop-framework.md) | Desktop framework: Electron vs Tauri | Proposed |
-| [ADR-002](docs/architecture/adr/ADR-002-local-storage-strategy.md) | Local storage strategy | Proposed |
+| [ADR-001](docs/architecture/adr/ADR-001-desktop-framework.md) | Desktop framework: Electron vs Tauri | **Accepted** — Electron |
+| [ADR-002](docs/architecture/adr/ADR-002-local-storage-strategy.md) | Local storage strategy | **Accepted** — Filesystem + SQLite |
 | [ADR-003](docs/architecture/adr/ADR-003-google-photos-integration.md) | Google Photos API integration | Proposed |
 
 ---
@@ -49,32 +51,81 @@ Before starting any implementation work in a session:
 - All code, comments, variable names, and documentation must be in **English**.
 - Communication with the user is in **French**.
 
-### Code style
-- To be defined once the tech stack is finalized (see ADR-001).
+### Code Style
+- TypeScript throughout (main process, renderer, workers)
+- To be fully defined during TASK-003 (ESLint + Prettier config)
 
-### File naming
+### File Naming
 - ADRs: `ADR-NNN-short-title.md` (zero-padded 3-digit number)
 - Tasks: `TASK-NNN-short-title.md` (zero-padded 3-digit number)
 - Sessions: `YYYY-MM-DD-session-NNN.md`
 
-### Git
-- Commit messages in English, imperative mood (`Add`, `Fix`, `Update`...)
-- One logical change per commit
+### Git — Git Flow
+
+The project follows the **Git Flow** branching model:
+
+| Branch | Purpose |
+|---|---|
+| `main` | Production-ready code only. Never commit directly. |
+| `develop` | Integration branch. All features merge here first. |
+| `feature/TASK-NNN-short-desc` | One branch per task, branched from `develop` |
+| `release/vX.Y.Z` | Release preparation, branched from `develop` |
+| `hotfix/short-desc` | Critical fixes on `main`, merged back to `main` + `develop` |
+
+**Workflow for a task**:
+1. Branch from `develop`: `git checkout -b feature/TASK-NNN-short-desc develop`
+2. Implement + write tests
+3. Open a Pull Request targeting `develop`
+4. CI must pass (tests + lint) before merge
+5. Squash-merge into `develop`
+
+**Commit message format**: English, imperative mood (`Add`, `Fix`, `Update`...)
+
+### Testing
+
+- **Coverage target**: 100% for all non-frontend code (main process, workers, shared utilities)
+- **Philosophy**: tests must exercise the code that runs in production — no mocks of internal modules; only mock external boundaries (filesystem, network, OS APIs)
+- **Framework**: to be confirmed during TASK-003 (Jest or Vitest)
+- Frontend (renderer) is excluded from the 100% coverage requirement
+
+### CI/CD (GitHub Actions)
+
+Every pull request and push to `develop` / `main` triggers:
+1. **Lint** — ESLint + TypeScript type check
+2. **Tests** — full test suite with coverage report
+3. **Coverage gate** — PR fails if non-frontend coverage drops below 100%
+
+Release builds (Windows installer + macOS DMG) are triggered on `main` tags.
 
 ---
 
 ## Key Constraints
 
-- **Privacy first**: no telemetry, no external network calls except for Google Photos import (explicit user action)
+- **Append-only**: the app never modifies or deletes files already in the shared library folder
+- **Multi-user safe**: multiple users can point the app at the same shared folder; each has their own local index
+- **Privacy first**: no telemetry, no external network calls except Google Photos import (explicit user action)
 - **Offline first**: the app must be fully functional without internet
 - **Local storage only**: all photos and metadata stay on the user's machine
-- **Non-destructive**: the app never deletes or modifies original photos without explicit user confirmation
+- **Non-destructive**: source files are never modified; staging via temp folder before library write
+
+---
+
+## Library Folder Naming Convention
+
+Only folders matching `\d{4}` at the root of the library are considered (e.g., `2025`, `2026`). All other folders are ignored.
+
+Inside a year folder, two sub-folder types are valid:
+- **Monthly**: `YYYY.MM` (e.g., `2025.04`)
+- **Event**: `YYYY.MM.DD[-[MM.]DD].Name` (e.g., `2025.04.15-19.Londres`)
+
+New imports are always placed in the **monthly folder** for the photo's capture date. Event folders are created and populated manually by users in V1.
 
 ---
 
 ## Open Questions / Decisions Pending
 
-- [ ] Confirm WhatsApp / Signal import scope (folder scan only, or deeper integration?)
-- [ ] Desktop framework choice: Electron vs Tauri (see ADR-001)
-- [ ] UI framework (React, Vue, Svelte...)
-- [ ] Target OS: Windows only, or also macOS / Linux?
+- [ ] UI framework: React vs Svelte (decide during TASK-003)
+- [ ] HEIC conversion: user-configurable JPEG quality or fixed?
+- [ ] Re-index trigger: on startup automatically, or manual only?
+- [ ] Google Photos date filter: remember last import date, or always prompt?
+- [ ] If two users import the same photo: detected on re-index and reported?

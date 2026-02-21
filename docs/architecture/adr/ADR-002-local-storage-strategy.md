@@ -91,88 +91,97 @@ The key refinement vs the original proposal: **all app data (SQLite DB, thumbnai
 
 ---
 
+## Library Folder — Naming Convention
+
+Only folders matching `\d{4}` at the root of the library are scanned. All other root-level folders are ignored.
+
+```
+<library_root>/                          ← user-configured, synced by Synology Drive
+├── 2025/                                ← year folder — scanned
+│   ├── 2025.01/                         ← monthly folder — created by app on import
+│   ├── 2025.01.31-02.02.Center.Parcs/   ← event folder — created manually by users
+│   ├── 2025.04/
+│   └── 2025.04.15-19.Londres/
+├── 2026/
+│   └── 2026.01/
+└── Archive/                             ← ignored (does not match \d{4})
+```
+
+**New photos are always placed in the monthly folder** for their capture date: `YYYY/YYYY.MM/<filename>`. Event folders are managed manually by users.
+
+---
+
 ## Proposed SQLite Schema (draft)
 
 ```sql
 -- Photos table
 CREATE TABLE photos (
-  id          INTEGER PRIMARY KEY,
-  path        TEXT NOT NULL UNIQUE,      -- relative path from library root
-  filename    TEXT NOT NULL,
-  phash       TEXT,                      -- perceptual hash for deduplication
-  date_taken  TEXT,                      -- ISO 8601, from EXIF or fallback
-  date_taken_source TEXT,               -- 'exif' | 'filename' | 'file_mtime' | 'import'
-  width       INTEGER,
-  height      INTEGER,
-  file_size   INTEGER,
-  source      TEXT,                      -- 'local' | 'google_photos' | 'sd_card' | 'whatsapp'
-  google_id   TEXT,                      -- Google Photos media item ID (if applicable)
-  imported_at TEXT NOT NULL,             -- ISO 8601
-  created_at  TEXT NOT NULL
+  id                INTEGER PRIMARY KEY,
+  path              TEXT NOT NULL UNIQUE,   -- relative path from library root
+  filename          TEXT NOT NULL,
+  phash             TEXT,                   -- perceptual hash for deduplication
+  date_taken        TEXT,                   -- ISO 8601 (from EXIF or fallback)
+  date_taken_source TEXT,                   -- 'exif' | 'filename' | 'file_mtime' | 'import'
+  width             INTEGER,
+  height            INTEGER,
+  file_size         INTEGER,
+  file_mtime        TEXT,                   -- used to detect changes on re-index
+  source            TEXT,                   -- 'local' | 'google_photos' | 'sd_card' | 'whatsapp'
+  google_id         TEXT,                   -- Google Photos media item ID (dedup on re-import)
+  imported_at       TEXT NOT NULL,          -- ISO 8601
+  created_at        TEXT NOT NULL
 );
 
--- Albums table
-CREATE TABLE albums (
-  id         INTEGER PRIMARY KEY,
-  name       TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
-
--- Album memberships
-CREATE TABLE album_photos (
-  album_id   INTEGER REFERENCES albums(id),
-  photo_id   INTEGER REFERENCES photos(id),
-  PRIMARY KEY (album_id, photo_id)
-);
-
--- Import jobs history
+-- Import jobs history (one row per import session)
 CREATE TABLE import_jobs (
-  id          INTEGER PRIMARY KEY,
-  source      TEXT NOT NULL,
-  started_at  TEXT NOT NULL,
-  finished_at TEXT,
-  status      TEXT NOT NULL,   -- 'running' | 'completed' | 'failed' | 'cancelled'
-  photos_imported INTEGER DEFAULT 0,
-  photos_skipped  INTEGER DEFAULT 0,
-  last_token  TEXT             -- resumption token for Google Photos incremental sync
+  id                   INTEGER PRIMARY KEY,
+  source               TEXT NOT NULL,       -- 'local' | 'google_photos' | 'sd_card' | 'whatsapp'
+  started_at           TEXT NOT NULL,
+  finished_at          TEXT,
+  status               TEXT NOT NULL,       -- 'running' | 'completed' | 'failed' | 'cancelled'
+  photos_imported      INTEGER DEFAULT 0,
+  photos_skipped       INTEGER DEFAULT 0,
+  live_photos_discarded INTEGER DEFAULT 0,
+  last_imported_date   TEXT,               -- date of most recent photo imported (for Google Photos next-run suggestion)
+  last_page_token      TEXT                -- Google Photos API pagination token for resumption
 );
 ```
+
+**Note**: The `albums` and `album_photos` tables are deferred — album management is manual (filesystem-level) in V1.
 
 ---
 
 ## Thumbnail Strategy
 
-- Thumbnails stored in `library/.keepic/thumbs/{photo_id}_{size}.webp`
-- Generated lazily on first display, cached permanently
-- Sizes: `256` (grid), `1024` (preview panel)
-- WebP format for good compression ratio
-- Thumbnails are fully derivable from originals and can be deleted/rebuilt at any time
+- Thumbnails stored in OS app data dir: `thumbs/{photo_id}_{size}.webp`
+- Never stored in the shared library folder
+- Generated lazily, cached permanently; deletable and rebuildable at any time
+- Sizes: `256px` (grid), `1024px` (preview) — for a future browse feature
 
 ---
 
 ## Storage Layout
 
-**Library folder** — user-configurable, sync-safe, raw photos only:
+**Shared library folder** — raw photos only, sync-safe:
 ```
-~/Pictures/KeePic/            ← user-configurable root (synced by Synology Drive)
-├── 2023/
-│   ├── 04/
-│   │   └── 15/
-│   │       └── IMG_1234.jpg
-│   └── 07/
-│       └── ...
-└── 2024/
-    └── ...
+<library_root>/                    ← user-configured (synced by Synology Drive)
+├── 2025/
+│   ├── 2025.01/
+│   │   └── IMG_1234.jpg
+│   └── 2025.04.15-19.Londres/
+│       └── IMG_5678.jpg
+└── 2026/
+    └── 2026.01/
 ```
 
-**App data directory** — OS standard location, never synced:
+**Per-user app data directory** — OS standard location, never synced:
 ```
 Windows:  %APPDATA%\KeePic\
 macOS:    ~/Library/Application Support/KeePic/
-├── config.json               ← app settings (library path, preferences)
-├── index.db                  ← SQLite metadata index
-├── thumbs/                   ← thumbnail cache (future browse feature)
-└── temp/                     ← import staging area (cleaned after each import)
+├── config.json    ← library path, user preferences
+├── index.db       ← SQLite metadata index (rebuildable from library)
+├── thumbs/        ← thumbnail cache (future use)
+└── temp/          ← import staging area (cleaned after each import)
 ```
 
 ---

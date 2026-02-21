@@ -1,7 +1,8 @@
 # KeePic — Specifications
 
-> **Status**: Draft v0.2 — 2026-02-21
+> **Status**: Draft v0.3 — 2026-02-21
 > **Changelog**:
+> - v0.3 (2026-02-21): Multi-user shared folder, append-only policy, per-instance local index, folder naming convention (YYYY/YYYY.MM/), event folders managed manually, year-based folder filtering.
 > - v0.2 (2026-02-21): Cross-platform (Windows + macOS), Synology Drive compatibility, library folder = raw photos only, metadata in OS app data, iPhone Live Photo handling, HEIC conversion, Google Photos date filter, browse/view deferred to later phase.
 > - v0.1 (2026-02-21): Initial draft.
 
@@ -9,15 +10,13 @@
 
 ## 1. Context & Goals
 
-KeePic is a personal desktop application (Windows 10/11 and macOS) that allows a single user to:
-- **Import** photos from multiple sources into a single organized local library
-- **Deduplicate** photos automatically to avoid redundant storage
-- **Organize** photos by date based on EXIF metadata
-- **Convert** iPhone Live Photos to archival-friendly formats
+KeePic is a personal desktop application (Windows 10/11 and macOS) that allows **multiple users** to import and organize photos into a **shared local library folder**. The shared folder is synchronized across machines via a Synology NAS (using Synology Drive).
 
-The application has no backend server. Everything runs locally. The library folder contains only raw photo files and is compatible with folder-sync tools such as Synology Drive. The app itself (thumbnails, database, temp files) stores working data separately in the OS application data directory.
+Each user runs their own instance of KeePic on their machine. The shared folder is the single source of truth for photo files. Each instance maintains its own local index (SQLite) built by scanning the shared folder.
 
-Browse and visualization features are **deferred** — users can use the OS file explorer and native photo viewers (Windows Photos, macOS Photos / Finder) to browse the organized library folder.
+The application is **append-only by default**: it never modifies, renames, or deletes files that already exist in the shared folder. It only adds new photos.
+
+Browse and visualization features are **deferred** — users can use the OS file explorer and native photo viewers to browse the organized library.
 
 ---
 
@@ -25,179 +24,219 @@ Browse and visualization features are **deferred** — users can use the OS file
 
 ### 2.1 Library Folder
 
-- The user configures the library folder once on first launch (stored in app config)
-- The library folder contains **only raw photo files**, organized by date:
-  ```
-  ~/Pictures/KeePic/
-  ├── 2023/
-  │   └── 04/
-  │       └── 15/
-  │           └── IMG_1234.jpg
-  └── 2024/
-      └── ...
-  ```
-- **No thumbnails, no database, no temp files** are stored in the library folder
-- The library folder is safe to sync with Synology Drive or any folder-sync tool
-- The user can change the library folder location at any time (the app re-indexes the new location)
+- The user configures the shared library folder path once on first launch
+- The library folder is organized according to a strict naming convention (see §2.2)
+- The app **only considers folders whose name starts with a 4-digit year** (e.g. `2025`, `2026`); all other folders at the root level are ignored
+- The library folder contains **only raw photo files** — no database, thumbnails, or temp files
+- The library folder is safe to sync with Synology Drive (append-only writes, predictable structure)
 
-### 2.2 Photo Import
+### 2.2 Folder Naming Convention
 
-#### 2.2.1 Import from Google Photos
-- The user authenticates with their Google account via OAuth 2.0
-- The user specifies a **start date**: only photos taken on or after that date are imported
-  - This handles the case where older photos are already organized locally
-  - The date filter is applied to the `creationTime` field (date taken, not upload date)
-- The user can also filter by album (optional)
-- Photos are downloaded to a **temporary folder** during import, then moved to the library
-- On re-import (incremental sync): only photos not yet imported are fetched (checked by Google Media ID stored in the DB)
+The library uses a 2-level hierarchy inside each year folder:
+
+```
+<library_root>/
+├── 2025/
+│   ├── 2025.01/                          ← monthly folder
+│   ├── 2025.01.31-02.02.Center.Parcs/    ← event folder (cross-month: Jan 31 – Feb 2)
+│   ├── 2025.02/
+│   ├── 2025.03/
+│   ├── 2025.04/
+│   ├── 2025.04.15-19.Londres/            ← event folder (same month: Apr 15–19)
+│   ├── 2025.05/
+│   ├── 2025.05.29-06.01.WE.Tarn/        ← event folder (cross-month: May 29 – Jun 1)
+│   └── 2025.06/
+└── 2026/
+    ├── 2026.01/
+    └── ...
+```
+
+**Year folder**: `YYYY`
+
+**Monthly folder**: `YYYY.MM`
+- One per calendar month
+- Created by the app when importing photos for that month (if not yet present)
+
+**Event folder**: `YYYY.MM.DD[-[MM.]DD].EventName[.words]`
+- Created and named **manually by users** in V1
+- Users move photos from monthly folders into event folders themselves
+- The app does not create, rename, or modify event folders
+- Event name words are separated by dots (spaces not used)
+
+**Folder pattern examples**:
+| Folder name | Type | Period |
+|---|---|---|
+| `2025` | Year | Full year |
+| `2025.01` | Monthly | January 2025 |
+| `2025.04.15-19.Londres` | Event | Apr 15–19, 2025 |
+| `2025.01.31-02.02.Center.Parcs` | Event | Jan 31 – Feb 2, 2025 |
+| `2025.05.29-06.01.WE.Tarn` | Event | May 29 – Jun 1, 2025 |
+
+**Validation rule**: the app only reads and writes inside folders matching `\d{4}` at the root level of the library. All other root-level folders are ignored entirely.
+
+### 2.3 Library Indexing
+
+On startup (and on demand), each app instance **scans the shared library folder** to build or refresh its local index:
+
+- Walk all year folders (`\d{4}`) at library root
+- Walk all subfolders (monthly and event folders)
+- For each image file found: compute pHash and read EXIF → upsert into local SQLite DB
+- Files already indexed (path + mtime unchanged) are skipped for performance
+- Files removed from the shared folder (e.g., by another user) are marked as deleted in the local index
+- The local index is a **derived cache**: it can always be fully rebuilt from the shared folder
+
+The scan runs in a background worker; the UI remains usable during indexing.
+
+### 2.4 Photo Import
+
+**Import destination**: new photos are always placed in the **monthly folder** corresponding to their capture date:
+- Destination: `<library_root>/YYYY/YYYY.MM/<filename>`
+- The year and monthly folders are created if they do not yet exist
+- The app never moves or modifies photos already in the library
+
+#### 2.4.1 Import Safety Checks
+
+Before placing a photo in the library, the app verifies:
+
+1. **Hash check**: the photo's pHash is compared against the local index. If a matching hash is found, the photo is considered a duplicate — the user is prompted (see §2.5)
+2. **Destination safety**: the target path (`YYYY/YYYY.MM/filename`) is computed deterministically from the photo's capture date; no existing file is ever overwritten without confirmation
+
+#### 2.4.2 Import from Google Photos
+- Each user independently authenticates with their own Google account via **OAuth 2.0**
+- The user specifies a **start date**: only photos taken on or after that date are fetched (filter on `creationTime`)
+  - This handles the migration case: older photos are already organized locally
+- The app **remembers the last import**: on subsequent imports, the start date is pre-filled with the date of the most recently imported photo. The user can adjust it before confirming.
+- On re-import: photos whose `google_id` is already in the local index are automatically skipped
+- Photos are downloaded to `temp/` (OS app data), then moved to the monthly folder after validation
 - **Out of scope**: uploading to Google Photos, two-way sync
 
-#### 2.2.2 Import from SD Card / Camera
-- The user selects a folder or removable drive
+#### 2.4.3 Import from SD Card / Camera
+- The user selects a source folder or removable drive
 - The app scans recursively for supported image formats
-- The user previews the list of found photos before import
-- Photos are **copied** (not moved) from the source to a temp folder, then processed and moved to the library
-- The original source is never modified
+- The user reviews the list before confirming import
+- Photos are **copied** (not moved) from source → temp → library
 
-#### 2.2.3 Import from Local Folders
+#### 2.4.4 Import from Local Folders
 - Same behavior as SD card import
-- Useful for importing from Downloads, WhatsApp/Signal media folders, etc.
+- Suitable for WhatsApp/Signal media folders, Downloads, etc.
 
-#### 2.2.4 Import from WhatsApp / Signal
-> **Scope**: folder scan only — no API or app integration.
-- The user points to the WhatsApp or Signal media export folder
-- The app scans for image files and imports them via the local folder import flow
-- These photos may lack EXIF data; the fallback date chain applies (see §2.3)
+#### 2.4.5 Import from WhatsApp / Signal
+> Scope: folder scan only — no API or app integration.
+- The user points to the media folder; the app imports via the local folder flow
+- Photos without EXIF use the fallback date chain (see §2.6)
 
-### 2.3 Date Extraction & Organization
+### 2.5 Deduplication
+
+- Before placing any photo in the library, the app checks its pHash against the local index
+- If a match is found, the user is shown a side-by-side comparison and can: skip, replace (with confirmation), or import both (renamed)
+- A standalone deduplication scan can be triggered on the existing library at any time
+
+### 2.6 Date Extraction
 
 Photos are organized by date of capture using the following priority chain:
 
 | Priority | Source | Notes |
 |---|---|---|
 | 1 | EXIF `DateTimeOriginal` | Most reliable |
-| 2 | EXIF `DateTime` (modification) | Fallback |
-| 3 | Date extracted from filename | e.g. `IMG_20230415_120000.jpg`, `2023-04-15 12.00.00.jpg` |
+| 2 | EXIF `DateTime` | Fallback |
+| 3 | Date extracted from filename | e.g. `IMG_20230415_120000.jpg` |
 | 4 | File modification date | Unreliable but usable |
 | 5 | Import date | Last resort — user is warned |
 
-The on-disk structure is: `<library_root>/YYYY/MM/DD/<filename>.<ext>`
+### 2.7 iPhone Live Photos
 
-### 2.4 iPhone Live Photos
-
-An iPhone Live Photo consists of two files sharing the same base name:
-- `IMG_1234.HEIC` — the still photo
-- `IMG_1234.MOV` — the short video clip
+An iPhone Live Photo consists of: `IMG_1234.HEIC` (still) + `IMG_1234.MOV` (video clip).
 
 **Default behavior**:
-- The `.HEIC` file is imported and archived
-- The `.MOV` file is **silently discarded** (not imported)
-- The user is shown a summary at the end of import: "X Live Photo videos discarded"
+- `.HEIC` is imported and archived in the monthly folder
+- `.MOV` is discarded (not imported); count shown in import summary
 
-**HEIC conversion (optional)**:
-- Before archiving, the user can enable automatic conversion: HEIC → JPEG
-- This is configured globally in settings (on/off, JPEG quality level)
-- Conversion happens in the temp folder; only the converted JPEG is moved to the library
-- Original HEIC is discarded after successful conversion
-- Conversion is lossless in terms of EXIF metadata (metadata is copied to the JPEG)
+**HEIC conversion (optional, configured in settings)**:
+- HEIC → JPEG conversion in temp folder; only the JPEG is moved to the library
+- EXIF metadata is copied to the JPEG; original HEIC is discarded after successful conversion
 
-**HEIC without conversion**:
-- HEIC files are archived as-is
-- On Windows, HEIC preview in File Explorer requires the HEIC codec (users are informed)
+### 2.8 Event Folders (V1 — Manual)
 
-### 2.5 Deduplication
+In V1, event folders are created and populated entirely by users:
+- Users manually create event folders inside a year folder (e.g., `2025/2025.04.15-19.Londres/`)
+- Users manually move photos from a monthly folder into the event folder
+- The app does **not** assist with event folder creation or photo assignment in V1
+- The local index is refreshed after such changes (via re-index)
 
-- Before archiving a photo, the app checks if an identical photo already exists in the library
-- Detection is based on **perceptual hash (pHash)** of the image content — not filename
-- If a duplicate is detected:
-  - The user is shown the two photos side by side with their metadata
-  - Options: skip (keep existing), replace (overwrite), keep both (import with renamed filename)
-- A standalone deduplication scan can be triggered on the existing library at any time
-
-### 2.6 Browse & Visualization
-
-> **Status**: Deferred — not in scope for v1.
-
-The library folder is organized in a human-readable `YYYY/MM/DD` structure. Users can:
-- Browse photos using the OS file explorer (Windows Explorer, macOS Finder)
-- View photos with the OS default photo viewer (Windows Photos, macOS Preview / Photos)
-- Benefit from Synology Drive's web interface if the folder is synced
-
-No in-app photo browser will be built in v1. This feature may be added in a future version.
+This feature may be enhanced in a future version (e.g., date-based auto-assignment, UI for creating events).
 
 ---
 
 ## 3. Non-Functional Specifications
 
 ### 3.1 Platform
-
 - **Primary targets**: Windows 10/11, macOS (Apple Silicon + Intel)
-- Single distributable per platform (installer or portable app)
-- **Self-contained**: no external runtime required by the user (Node.js, Python, etc.)
+- Self-contained: no external runtime required by the user
+- One distributable per platform
 
-### 3.2 App Data Storage
+### 3.2 Multi-User Safety
+- The app is **append-only**: it never modifies or deletes files already in the shared library folder
+- Multiple users can safely use the app against the same shared folder (via Synology Drive sync)
+- Concurrent import sessions by different users are not coordinated — each user is responsible for syncing before importing
+- Recommended workflow: sync → re-index → import
 
-All working data is stored in the **OS standard application data directory** — NOT in the library folder:
+### 3.3 App Data Storage (per user instance)
+
+All working data is stored in the **OS standard application data directory** — NOT in the shared library folder:
 
 | OS | App data path |
 |---|---|
 | Windows | `%APPDATA%\KeePic\` |
 | macOS | `~/Library/Application Support/KeePic/` |
 
-This directory contains:
-- `config.json` — app settings (library folder path, preferences)
-- `index.db` — SQLite metadata index
-- `thumbs/` — thumbnail cache (for future browse feature)
-- `temp/` — temporary import staging area
+Contents:
+- `config.json` — library folder path, user preferences
+- `index.db` — local SQLite index (hashes, metadata, import history)
+- `thumbs/` — thumbnail cache (future use)
+- `temp/` — import staging area (cleaned after each import)
 
-### 3.3 Library Folder Sync Compatibility
-
-- The library folder contains **only raw photo files** — no hidden metadata files, no database, no thumbnails
+### 3.4 Library Folder Compatibility
+- Only raw photo files in the shared folder (no hidden files, no metadata sidecars)
 - Compatible with Synology Drive, Dropbox, OneDrive, or any folder-sync tool
-- The `YYYY/MM/DD` structure is stable and deterministic (same photo always maps to the same path)
-- If the library folder is modified externally (e.g., by Synology Drive sync), the app can re-index it
+- Folder structure is stable and deterministic
 
-### 3.4 Performance
+### 3.5 Performance
+- Must handle libraries of up to 50,000 photos
+- Initial index build: background, non-blocking
+- Incremental re-index: fast (skip unchanged files by path + mtime)
+- Import pipeline runs in background workers
 
-- Must handle libraries of up to **50,000 photos** without becoming sluggish
-- Import jobs run in the background; the UI remains responsive
-- HEIC conversion, pHash computation, and EXIF reading run in background workers
-- Thumbnail generation (for future browse) is lazy and cached
+### 3.6 Privacy & Security
+- No telemetry, no external calls except Google Photos import
+- Google OAuth tokens stored in OS keychain
+- No photo data transmitted outside the machine except for Google Photos import
 
-### 3.5 Privacy & Security
+### 3.7 Reliability & Non-Destructive Behavior
+- Import staging in temp folder: files moved to library only after successful processing
+- Original source files never modified
+- Crash during import leaves no partial files in the library
+- SQLite index fully rebuildable from the shared folder
 
-- No telemetry, no analytics, no external network calls except Google Photos import (explicit user action)
-- Google OAuth tokens stored in OS keychain (Windows Credential Manager, macOS Keychain)
-- No photo data is transmitted outside the machine except for Google Photos import
+### 3.8 Supported Formats
 
-### 3.6 Reliability & Non-Destructive Behavior
-
-- All import operations stage files in a temp folder first; they are only moved to the library after successful processing
-- Original source files are never modified or deleted
-- If the app crashes during import, no partial files are left in the library (temp staging ensures atomicity)
-- The SQLite index is a derived cache; it can be fully rebuilt by re-scanning the library folder
-- All destructive actions (delete, replace on duplicate) require explicit user confirmation
-
-### 3.7 Supported Formats
-
-**Images (import + archive)**:
-- JPEG / JPG
-- HEIC / HEIF (with optional JPEG conversion)
-- PNG
-- TIFF
-- RAW: CR2, NEF, ARW — read-only for EXIF/pHash; archived as-is without conversion
-
-**Video**:
-- `.MOV` from iPhone Live Photos: discarded by default (not archived)
-- Other video formats: out of scope for v1
+| Format | Support |
+|---|---|
+| JPEG / JPG | Full |
+| HEIC / HEIF | Full (with optional JPEG conversion) |
+| PNG | Full |
+| TIFF | Full |
+| RAW (CR2, NEF, ARW) | EXIF + pHash only; archived as-is |
+| MOV (Live Photo) | Discarded by default |
+| Other video | Out of scope |
 
 ---
 
 ## 4. Out of Scope (v1)
 
 - In-app photo browser / viewer
+- Event folder creation or management by the app
 - Mobile application
-- Multi-user support
+- Multi-user coordination / conflict detection
 - Upload to Google Photos or any external service
 - Video management
 - AI-based face recognition or scene detection
@@ -209,8 +248,9 @@ This directory contains:
 
 | # | Question | Owner | Status |
 |---|---|---|---|
-| Q1 | HEIC conversion quality: user-configurable JPEG quality, or fixed (e.g. 90%)? | User | Open |
-| Q2 | Duplicates during import: review one by one, or batch review at the end? | User | Open |
-| Q3 | Should the app offer to re-index if it detects the library was modified externally? | User | Open |
-| Q4 | HEIC on Windows without conversion: show one-time warning with link to Microsoft HEIC codec? | User | Open |
-| Q5 | Google Photos date filter: remember last import date automatically, or always ask? | User | Open |
+| Q1 | HEIC conversion: user-configurable JPEG quality, or fixed (e.g. 90%)? | User | Open |
+| Q2 | Duplicates during import: review one by one, or batch review at end? | User | Open |
+| Q3 | HEIC on Windows without conversion: show one-time warning + codec link? | User | Open |
+| Q4 | Google Photos date filter: **Closed** — app pre-fills with last imported date; user can adjust | — | Closed |
+| Q5 | Re-index: triggered manually only, or also on app startup? | User | Open |
+| Q6 | If two users import the same photo independently: detected on next re-index + reported? | User | Open |
