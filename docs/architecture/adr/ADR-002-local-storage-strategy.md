@@ -1,6 +1,6 @@
 # ADR-002 — Local Storage Strategy
 
-> **Status**: Proposed
+> **Status**: Accepted
 > **Date**: 2026-02-21
 > **Deciders**: Project owner
 
@@ -11,7 +11,9 @@
 KeePic stores photos and metadata entirely on the user's machine. We need to decide:
 1. How photo **files** are organized on disk
 2. How **metadata** (dates, hashes, albums, import history) is stored and queried
-3. How **thumbnails** are cached
+3. Where **app data** (DB, thumbnails, temp files) is stored
+
+A critical constraint has been established: the **library folder must be clean** (raw photos only) so that it can be safely synchronized with Synology Drive or any other folder-sync tool. No database files, thumbnails, or temp files can live inside the library folder.
 
 The solution must handle libraries up to 50,000 photos while remaining fast, recoverable from corruption, and understandable by the user (they should be able to find their photos without KeePic if needed).
 
@@ -20,6 +22,7 @@ The solution must handle libraries up to 50,000 photos while remaining fast, rec
 ## Decision Drivers
 
 - Human readability: the user must be able to browse files without KeePic
+- Sync compatibility: library folder must be clean (raw photos only) for Synology Drive
 - Query performance: filtering by date, searching by filename
 - Resilience: if the DB is lost, the library should be rebuildable from the files
 - Simplicity: avoid complex infrastructure (no PostgreSQL, no Docker)
@@ -80,9 +83,11 @@ The solution must handle libraries up to 50,000 photos while remaining fast, rec
 
 ## Decision
 
-> **To be decided** — Proposed choice: **Option B (Filesystem + SQLite index)**
+**Chosen option: Option B — Filesystem + SQLite index**
 
 **Rationale**: Option B provides the best balance between query performance and human readability. The filesystem remains the primary source of truth for files; SQLite is a derived index that can always be rebuilt. Option A is too slow at scale. Option C sacrifices human readability for no meaningful gain.
+
+The key refinement vs the original proposal: **all app data (SQLite DB, thumbnails, temp folder) is stored in the OS application data directory**, completely separate from the library folder. This ensures the library folder is clean and sync-safe.
 
 ---
 
@@ -145,20 +150,29 @@ CREATE TABLE import_jobs (
 
 ---
 
-## Library Folder Structure
+## Storage Layout
 
+**Library folder** — user-configurable, sync-safe, raw photos only:
 ```
-~/Pictures/KeePic/            ← user-configurable root
+~/Pictures/KeePic/            ← user-configurable root (synced by Synology Drive)
 ├── 2023/
 │   ├── 04/
 │   │   └── 15/
 │   │       └── IMG_1234.jpg
 │   └── 07/
 │       └── ...
-└── .keepic/
-    ├── index.db              ← SQLite metadata index
-    ├── thumbs/               ← thumbnail cache
-    └── config.json           ← app configuration
+└── 2024/
+    └── ...
+```
+
+**App data directory** — OS standard location, never synced:
+```
+Windows:  %APPDATA%\KeePic\
+macOS:    ~/Library/Application Support/KeePic/
+├── config.json               ← app settings (library path, preferences)
+├── index.db                  ← SQLite metadata index
+├── thumbs/                   ← thumbnail cache (future browse feature)
+└── temp/                     ← import staging area (cleaned after each import)
 ```
 
 ---
