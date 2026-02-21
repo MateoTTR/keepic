@@ -41,7 +41,8 @@ Before starting any implementation work in a session:
 3. Read the relevant ADRs if the task involves an architectural decision
 4. Read [docs/specs/specifications.md](docs/specs/specifications.md) if the task involves a feature
 5. Check the latest session report in [docs/sessions/](docs/sessions/) for context carried over from the previous session
-6. At the end of the session, create a session report and update the backlog
+6. **Before writing any code**: create or update the `docs/tasks/TASK-NNN-*.md` file for the task — define the goal, deliverables, key design decisions, and IPC channels (if any). If the file already exists, read it first.
+7. At the end of the session, create a session report and update the backlog (mark task `[x]` and fill in the session column)
 
 ---
 
