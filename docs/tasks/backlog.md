@@ -22,8 +22,8 @@
 |---|---|---|---|
 | [TASK-001](TASK-001-documentation-setup.md) | Set up project documentation structure | `[x]` | 2026-02-21-session-001 |
 | [TASK-002](TASK-002-adr-decisions.md) | Refine specs + close ADR-001 (Electron) and ADR-002 | `[x]` | 2026-02-21-session-002 |
-| [TASK-003](TASK-003-tech-stack-setup.md) | Set up Electron project scaffold (electron-vite, TypeScript, UI framework, test framework) | `[ ]` | — |
-| [TASK-003b](TASK-003b-cicd-setup.md) | Set up GitHub Actions CI/CD (lint, tests, coverage gate, release build) | `[ ]` | — |
+| [TASK-003](TASK-003-tech-stack-setup.md) | Set up Electron project scaffold (electron-vite, TypeScript, UI framework, test framework) | `[x]` | 2026-02-21-session-004 |
+| [TASK-003b](TASK-003b-cicd-setup.md) | Set up GitHub Actions CI/CD (lint, tests, coverage gate, release build) | `[x]` | 2026-02-21-session-004 |
 
 ## Phase 1 — Core Foundation
 

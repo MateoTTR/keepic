@@ -6,7 +6,11 @@ target/
 dist/
 out/
 build/
+dist-electron/
 .vite/
+
+# Test coverage
+coverage/
 
 # OS
 .DS_Store
