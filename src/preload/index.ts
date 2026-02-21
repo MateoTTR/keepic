@@ -1,6 +1,14 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type { AppConfig, SelectLibraryFolderResult } from '../shared/types'
 
-// Expose a safe API to the renderer via contextBridge.
-// IPC handlers will be added here as features are implemented.
+const keepicAPI = {
+  config: {
+    get: (): Promise<AppConfig> => ipcRenderer.invoke('config:get'),
+    selectLibraryFolder: (): Promise<SelectLibraryFolderResult> =>
+      ipcRenderer.invoke('config:select-library-folder')
+  }
+}
+
 contextBridge.exposeInMainWorld('electron', electronAPI)
+contextBridge.exposeInMainWorld('keepic', keepicAPI)

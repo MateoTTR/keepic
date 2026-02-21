@@ -1,6 +1,9 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import { ConfigManager } from './config'
+import { KeePicDatabase } from './db/database'
+import { handleGetConfig, handleSelectLibraryFolder } from './ipc/config-handlers'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -33,6 +36,33 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  const configManager = new ConfigManager(app.getPath('userData'))
+  configManager.load()
+
+  // Open the database if a library path is already configured.
+  let database: KeePicDatabase | null = null
+  if (configManager.get().libraryPath) {
+    database = new KeePicDatabase(join(app.getPath('userData'), 'index.db'))
+    database.open()
+  }
+
+  ipcMain.handle('config:get', () => handleGetConfig(configManager))
+
+  ipcMain.handle('config:select-library-folder', async () => {
+    const result = await handleSelectLibraryFolder(
+      dialog.showOpenDialog.bind(dialog),
+      configManager
+    )
+
+    // If a valid library path was selected for the first time, open the database.
+    if (!result.cancelled && result.path && !database) {
+      database = new KeePicDatabase(join(app.getPath('userData'), 'index.db'))
+      database.open()
+    }
+
+    return result
+  })
+
   createWindow()
 
   app.on('activate', () => {
