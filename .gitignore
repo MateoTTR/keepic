@@ -16,11 +16,12 @@ coverage/
 .DS_Store
 Thumbs.db
 
-# Editor
+# Editor & local tools
 .vscode/
 .idea/
 *.swp
 *.swo
+.claude/settings.local.json
 
 # Environment
 .env
