@@ -25,6 +25,7 @@
   "dependencies": {
     "better-sqlite3": "^11.0.0",
     "electron-updater": "^6.1.7",
+    "exifreader": "^4.36.2",
     "keytar": "^7.9.0",
     "sharp": "^0.33.3"
   },

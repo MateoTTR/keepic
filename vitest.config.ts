@@ -12,6 +12,7 @@ export default defineConfig({
       include: ['src/main/**/*.ts', 'src/workers/**/*.ts', 'src/shared/**/*.ts'],
       exclude: [
         'src/main/index.ts', // Electron entry point — not unit-testable
+        'src/workers/**', // Worker thread entry points — not unit-testable
         'src/shared/types/**', // Type-only files — no executable code
         'src/renderer/**',
         'src/preload/**'

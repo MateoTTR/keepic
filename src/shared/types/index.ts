@@ -48,6 +48,19 @@ export interface SelectLibraryFolderResult {
   error?: string
 }
 
+export interface IndexProgress {
+  total: number
+  processed: number
+  indexed: number
+  skipped: number
+}
+
+export interface IndexResult {
+  indexed: number
+  skipped: number
+  deleted: number
+}
+
 export interface ImportProgress {
   total: number
   processed: number
