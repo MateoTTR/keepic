@@ -1,9 +1,19 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync
+} from 'fs'
 import { basename, dirname, extname, join } from 'path'
+import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import { isLivePhotoMov, defaultHeicConverter, type HeicConverter } from './heic'
 import { readExifDate, defaultExifLoader, type ExifLoader } from './exif'
-import { defaultPhashComputer, type PhashComputer } from './phash'
+import { defaultPhashComputer, type PhashComputer, type PhashResult } from './phash'
 import { getDestinationPath } from '../shared/library-path'
 import type { KeePicDatabase } from './db/database'
 import type {
@@ -119,6 +129,7 @@ export interface PlannerOptions {
   loadExif?: ExifLoader
   computePhash?: PhashComputer
   checkExists?: (path: string) => boolean
+  convertHeic?: HeicConverter
 }
 
 /**
@@ -144,6 +155,8 @@ export async function buildImportPlan(
   const loadExif = options.loadExif ?? defaultExifLoader
   const computePhash = options.computePhash ?? defaultPhashComputer
   const checkExists = options.checkExists ?? existsSync
+  /* v8 ignore next 2 */
+  const convertHeicFn = options.convertHeic ?? defaultHeicConverter
 
   const { candidates, livePhotoMovs } = scanSourceFiles(sourceFolder)
   const total = candidates.length
@@ -158,8 +171,28 @@ export async function buildImportPlan(
     const isHeic = srcExt === '.heic' || srcExt === '.heif'
     const convertHeic = isHeic && config.heicConversion.enabled
 
-    // Compute pHash (reads the file; sharp handles HEIC natively)
-    const phashResult = await computePhash(srcPath)
+    // Compute pHash on the file's final form:
+    // - If HEIC conversion is enabled, pHash must be computed on the converted JPEG
+    //   so that it matches the hash the indexer will see when scanning the library.
+    // - Otherwise, pHash is computed on the source file directly.
+    let phashResult: PhashResult | null
+    if (convertHeic) {
+      const tempPath = join(tmpdir(), `keepic-plan-${randomUUID()}.jpg`)
+      try {
+        await convertHeicFn(srcPath, tempPath, config.heicConversion.jpegQuality)
+        phashResult = await computePhash(tempPath)
+      } catch {
+        phashResult = null
+      } finally {
+        try {
+          unlinkSync(tempPath)
+        } catch {
+          // Temp file may not exist if conversion failed — ignore
+        }
+      }
+    } else {
+      phashResult = await computePhash(srcPath)
+    }
 
     // Extract capture date via EXIF fallback chain
     const exifResult = await readExifDate(srcPath, stat.mtime, loadExif)

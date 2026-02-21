@@ -305,10 +305,56 @@ describe('buildImportPlan', () => {
 
     const plan = await buildImportPlan(sourceDir, libraryDir, db, heicConversionConfig, () => {}, {
       loadExif: nullExifLoader,
-      computePhash: nullPhashComputer
+      computePhash: nullPhashComputer,
+      convertHeic: async () => {} // noop — we only test the destination filename here
     })
 
     expect(plan.entries[0].destinationRelativePath).toMatch(/IMG_1234\.jpg$/)
+  })
+
+  it('computes pHash on the converted JPEG (not the original HEIC) when conversion is enabled', async () => {
+    touch(join(sourceDir, 'IMG.heic'))
+
+    // Track what path computePhash is called with
+    let pHashCalledWith: string | null = null
+    const plan = await buildImportPlan(sourceDir, libraryDir, db, heicConversionConfig, () => {}, {
+      loadExif: nullExifLoader,
+      convertHeic: async (_src, dest) => {
+        // Write a fake file to dest so unlinkSync can clean it up
+        touch(dest)
+      },
+      computePhash: async (filePath) => {
+        pHashCalledWith = filePath
+        return { phash: 'jpeg-phash', width: 100, height: 100 }
+      }
+    })
+
+    // pHash must be computed on the temp converted file, NOT on the original HEIC
+    expect(pHashCalledWith).not.toBe(join(sourceDir, 'IMG.heic'))
+    expect(plan.entries[0].phash).toBe('jpeg-phash')
+    // Temp file must have been cleaned up
+    expect(pHashCalledWith !== null && existsSync(pHashCalledWith!)).toBe(false)
+  })
+
+  it('sets pHash to null when HEIC conversion fails during planning', async () => {
+    touch(join(sourceDir, 'IMG.heic'))
+
+    let pHashCalled = false
+    const plan = await buildImportPlan(sourceDir, libraryDir, db, heicConversionConfig, () => {}, {
+      loadExif: nullExifLoader,
+      convertHeic: async () => {
+        throw new Error('sharp: unsupported format')
+      },
+      computePhash: async () => {
+        pHashCalled = true
+        return { phash: 'should-not-be-used', width: 0, height: 0 }
+      }
+    })
+
+    // pHash not computed — entry is still created with null hash
+    expect(pHashCalled).toBe(false)
+    expect(plan.entries[0].phash).toBeNull()
+    expect(plan.entries[0].status).toBe('ready')
   })
 
   it('keeps HEIC extension when conversion is disabled', async () => {
