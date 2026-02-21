@@ -34,7 +34,7 @@
 | [TASK-006](TASK-006-library-indexer.md) | Implement library indexer (scan year folders, EXIF + pHash, upsert DB) | `[x]` | 2026-02-21-session-006 |
 | [TASK-007](TASK-007-exif-reader.md) | Implement EXIF reader and date extraction with fallback chain | `[x]` | 2026-02-21-session-006 |
 | [TASK-008](TASK-008-phash.md) | Implement perceptual hash (pHash) computation | `[x]` | 2026-02-21-session-006 |
-| [TASK-009](TASK-009-heic-handling.md) | Implement Live Photo detection and HEIC → JPEG conversion | `[ ]` | — |
+| [TASK-009](TASK-009-heic-handling.md) | Implement Live Photo detection and HEIC → JPEG conversion | `[x]` | 2026-02-21-session-007 |
 
 ## Phase 2 — Import
 
