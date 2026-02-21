@@ -70,3 +70,40 @@ export interface ImportProgress {
   livePhotosDiscarded: number
   currentFile: string | null
 }
+
+export type ImportEntryStatus = 'ready' | 'duplicate' | 'collision' | 'error'
+
+export interface ImportPlanEntry {
+  sourcePath: string
+  destinationRelativePath: string
+  dateTaken: string
+  dateTakenSource: DateSource
+  phash: string | null
+  width: number | null
+  height: number | null
+  fileSize: number
+  status: ImportEntryStatus
+  duplicateOf?: string
+  originalDestination?: string
+  errorMessage?: string
+}
+
+export interface ImportPlan {
+  entries: ImportPlanEntry[]
+  livePhotosDiscarded: number
+  sourceFolder: string
+}
+
+export interface PlanProgress {
+  total: number
+  processed: number
+  currentFile: string | null
+}
+
+export interface ImportResult {
+  imported: number
+  skipped: number
+  livePhotosDiscarded: number
+  errors: Array<{ sourcePath: string; error: string }>
+  status: ImportStatus
+}

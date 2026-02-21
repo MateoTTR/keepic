@@ -5,6 +5,14 @@ import { is } from '@electron-toolkit/utils'
 import { ConfigManager } from './config'
 import { KeePicDatabase } from './db/database'
 import { handleGetConfig, handleSelectLibraryFolder } from './ipc/config-handlers'
+import {
+  handleSelectSourceFolder,
+  handlePlan,
+  handleExecute,
+  handleCancel,
+  type ActiveWorkerRef
+} from './ipc/import-handlers'
+import type { ImportPlan } from '../shared/types'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -50,6 +58,13 @@ app.whenReady().then(() => {
   // Track the running indexer worker to prevent concurrent runs.
   let indexerWorker: Worker | null = null
 
+  // Track the running importer worker (Phase 2) to prevent concurrent imports.
+  const importerWorkerRef: ActiveWorkerRef = { value: null }
+
+  const plannerWorkerPath = join(__dirname, '../workers/planner.worker.js')
+  const importerWorkerPath = join(__dirname, '../workers/importer.worker.js')
+  const dbPath = join(app.getPath('userData'), 'index.db')
+
   // --- Config IPC ---
 
   ipcMain.handle('config:get', () => handleGetConfig(configManager))
@@ -69,6 +84,47 @@ app.whenReady().then(() => {
     return result
   })
 
+  // --- Import IPC ---
+
+  ipcMain.handle('import:select-source-folder', () =>
+    handleSelectSourceFolder(dialog.showOpenDialog.bind(dialog))
+  )
+
+  ipcMain.handle('import:plan', async (event, { sourcePath }: { sourcePath: string }) => {
+    const libraryPath = configManager.get().libraryPath
+    if (!libraryPath) return { error: 'No library path configured' }
+    if (!database) return { error: 'Database not open' }
+
+    return handlePlan(
+      sourcePath,
+      libraryPath,
+      dbPath,
+      configManager.get(),
+      (progress) => event.sender.send('import:plan-progress', progress),
+      plannerWorkerPath
+    )
+  })
+
+  ipcMain.handle('import:execute', (event, { plan }: { plan: ImportPlan }) => {
+    const libraryPath = configManager.get().libraryPath
+    if (!libraryPath) return { error: 'No library path configured' }
+    if (!database) return { error: 'Database not open' }
+
+    return handleExecute(
+      plan,
+      libraryPath,
+      dbPath,
+      app.getPath('userData'),
+      configManager.get(),
+      (progress) => event.sender.send('import:progress', progress),
+      (result) => event.sender.send('import:complete', result),
+      importerWorkerRef,
+      importerWorkerPath
+    )
+  })
+
+  ipcMain.handle('import:cancel', () => handleCancel(importerWorkerRef))
+
   // --- Library indexer IPC ---
 
   ipcMain.handle('library:start-index', (event) => {
@@ -81,10 +137,9 @@ app.whenReady().then(() => {
       return { error: 'No library path configured' }
     }
 
-    const workerPath = join(__dirname, '../workers/indexer.worker.js')
-    const dbPath = join(app.getPath('userData'), 'index.db')
+    const indexerWorkerPath = join(__dirname, '../workers/indexer.worker.js')
 
-    indexerWorker = new Worker(workerPath, {
+    indexerWorker = new Worker(indexerWorkerPath, {
       workerData: { libraryPath, dbPath }
     })
 

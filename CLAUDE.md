@@ -76,8 +76,8 @@ The project follows the **Git Flow** branching model:
 **Workflow for a task**:
 1. Branch from `develop`: `git checkout -b feature/TASK-NNN-short-desc develop`
 2. Implement + write tests
-3. Open a Pull Request targeting `develop`
-4. CI must pass (tests + lint) before merge
+3. Once tests pass and coverage is at 100%, **open a Pull Request targeting `develop`** directly — no need to wait for explicit instruction
+4. The user reviews and merges the PR themselves; they will inform Claude once merged
 5. Squash-merge into `develop`
 
 **Commit message format**: English, imperative mood (`Add`, `Fix`, `Update`...)
