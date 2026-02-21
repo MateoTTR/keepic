@@ -40,7 +40,7 @@
 
 | # | Title | Status | Session |
 |---|---|---|---|
-| [TASK-010](TASK-010-import-local-folder.md) | Implement local folder / SD card import pipeline | `[ ]` | — |
+| [TASK-010](TASK-010-import-local-folder.md) | Implement local folder / SD card import pipeline | `[x]` | 2026-02-21-session-008 |
 | [TASK-011](TASK-011-deduplication-ui.md) | Implement deduplication review UI | `[ ]` | — |
 | [TASK-012](TASK-012-google-photos-oauth.md) | Implement Google Photos OAuth 2.0 flow + keychain token storage | `[ ]` | — |
 | [TASK-013](TASK-013-google-photos-import.md) | Implement Google Photos media fetch, date filter, and download | `[ ]` | — |
