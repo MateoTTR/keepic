@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+target/
+
+# Build outputs
+dist/
+out/
+build/
+.vite/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# KeePic library data (never commit user photos or DB)
+library/
+*.db
+*.db-shm
+*.db-wal
+
+# Thumbnails cache
+.keepic/
