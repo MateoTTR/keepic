@@ -29,7 +29,7 @@
 
 | # | Title | Status | Session |
 |---|---|---|---|
-| [TASK-004](TASK-004-database-schema.md) | Implement SQLite schema and migrations | `[ ]` | — |
+| [TASK-004](TASK-004-database-schema.md) | Implement SQLite schema and migrations | `[x]` | 2026-02-21-session-004 |
 | [TASK-005](TASK-005-library-folder-init.md) | Implement library folder initialization and first-launch config | `[ ]` | — |
 | [TASK-006](TASK-006-library-indexer.md) | Implement library indexer (scan year folders, EXIF + pHash, upsert DB) | `[ ]` | — |
 | [TASK-007](TASK-007-exif-reader.md) | Implement EXIF reader and date extraction with fallback chain | `[ ]` | — |

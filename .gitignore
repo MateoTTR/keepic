@@ -22,6 +22,8 @@ Thumbs.db
 *.swp
 *.swo
 .claude/settings.local.json
+tsconfig.node.tsbuildinfo
+tsconfig.web.tsbuildinfo
 
 # Environment
 .env

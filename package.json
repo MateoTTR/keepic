@@ -14,7 +14,7 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "start": "electron .",
-    "lint": "eslint . --ext .ts,.tsx",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit && tsc --project tsconfig.node.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

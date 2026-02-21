@@ -9,14 +9,10 @@ export default defineConfig({
     environment: 'node',
     coverage: {
       provider: 'v8',
-      include: [
-        'src/main/**/*.ts',
-        'src/workers/**/*.ts',
-        'src/shared/**/*.ts'
-      ],
+      include: ['src/main/**/*.ts', 'src/workers/**/*.ts', 'src/shared/**/*.ts'],
       exclude: [
-        'src/main/index.ts',       // Electron entry point — not unit-testable
-        'src/shared/types/**',     // Type-only files — no executable code
+        'src/main/index.ts', // Electron entry point — not unit-testable
+        'src/shared/types/**', // Type-only files — no executable code
         'src/renderer/**',
         'src/preload/**'
       ],
