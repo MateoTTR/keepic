@@ -5,6 +5,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
+    envPrefix: ['MAIN_VITE_', 'GOOGLE_'],
     resolve: {
       alias: {
         '@shared': resolve('src/shared')
