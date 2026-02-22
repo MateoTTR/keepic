@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Personal photo library manager — import, deduplicate and organize photos locally",
   "main": "./out/main/index.js",
-  "author": "",
+  "author": "MateoTTR",
   "license": "UNLICENSED",
   "private": true,
   "engines": {
@@ -61,6 +61,11 @@
     "directories": {
       "output": "dist-electron"
     },
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**",
+      "node_modules/keytar/**",
+      "node_modules/sharp/**"
+    ],
     "win": {
       "target": "nsis",
       "icon": "resources/icon.ico"
