@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Personal photo library manager — import, deduplicate and organize photos locally",
   "main": "./out/main/index.js",
-  "author": "",
+  "author": "MateoTTR",
   "license": "UNLICENSED",
   "private": true,
   "engines": {
@@ -20,7 +20,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "package:win": "npm run build && electron-builder --win",
-    "package:mac": "npm run build && electron-builder --mac"
+    "package:mac": "npm run build && electron-builder --mac",
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",
@@ -61,6 +62,11 @@
     "directories": {
       "output": "dist-electron"
     },
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**",
+      "node_modules/keytar/**",
+      "node_modules/sharp/**"
+    ],
     "win": {
       "target": "nsis",
       "icon": "resources/icon.ico"
