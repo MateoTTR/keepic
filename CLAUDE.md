@@ -50,6 +50,7 @@ Before starting any implementation work in a session:
 
 ### Language
 - All code, comments, variable names, and documentation must be in **English**.
+- This includes: commit messages, PR titles, PR descriptions, code review comments, and session reports.
 - Communication with the user is in **French**.
 
 ### Code Style
