@@ -20,8 +20,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "package:win": "npm run build && electron-builder --win",
-    "package:mac": "npm run build && electron-builder --mac",
-    "postinstall": "electron-builder install-app-deps"
+    "package:mac": "npm run build && electron-builder --mac"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",
