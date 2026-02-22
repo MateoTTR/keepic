@@ -70,6 +70,8 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [build-windows, build-macos]
+    permissions:
+      contents: write
 
     steps:
       - name: Download Windows artifact
