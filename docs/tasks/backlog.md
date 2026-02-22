@@ -61,9 +61,9 @@
 
 | # | Title | Status | Session |
 |---|---|---|---|
-| [TASK-015](TASK-015-library-stats.md) | Implement library statistics view | `[ ]` | — |
-| [TASK-016](TASK-016-deduplication-scan.md) | Implement standalone deduplication scan on existing library | `[ ]` | — |
-| [TASK-017](TASK-017-reindex.md) | Implement manual re-index of library folder | `[ ]` | — |
+| [TASK-019](TASK-019-library-stats.md) | Implement library statistics view | `[~]` | 2026-02-22-session-012 |
+| [TASK-020](TASK-020-deduplication-scan.md) | Implement standalone deduplication scan on existing library | `[ ]` | — |
+| [TASK-021](TASK-021-reindex.md) | Implement manual re-index of library folder | `[ ]` | — |
 
 ## Phase 5 — Packaging & Distribution
 
