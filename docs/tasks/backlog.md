@@ -69,7 +69,7 @@
 
 | # | Title | Status | Session |
 |---|---|---|---|
-| [TASK-018](TASK-018-packaging.md) | Configure electron-builder for Windows (NSIS) + macOS (DMG) releases | `[ ]` | — |
+| [TASK-022](TASK-022-packaging.md) | Configure electron-builder for Windows (NSIS) + macOS (DMG) releases | `[ ]` | — |
 
 ---
 
