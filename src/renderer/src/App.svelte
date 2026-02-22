@@ -92,6 +92,10 @@
     currentScreen = 'home'
   }
 
+  function handleLibraryPathChange(path: string): void {
+    if (config) config = { ...config, libraryPath: path }
+  }
+
   function handleGoogleAuthChange(status: GoogleAuthStatus): void {
     googleAuthStatus = status
   }
@@ -109,8 +113,10 @@
   <div class="w-full max-w-3xl mx-auto p-6">
     {#if currentScreen === 'home'}
       <HomeScreen
+        libraryPath={config?.libraryPath ?? null}
         {sourceFolder}
         {googleAuthStatus}
+        onLibraryPathChange={handleLibraryPathChange}
         onSourceFolder={handleSourceFolder}
         onAnalyse={handleAnalyse}
         onGoogleImport={handleGoogleImport}

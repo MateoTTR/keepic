@@ -5,8 +5,10 @@
   import type { GoogleAuthStatus, LibraryStats } from '../../../shared/types'
 
   interface Props {
+    libraryPath: string | null
     sourceFolder: string
     googleAuthStatus: GoogleAuthStatus | null
+    onLibraryPathChange: (path: string) => void
     onSourceFolder: (folder: string) => void
     onAnalyse: () => void
     onGoogleImport: () => void
@@ -15,7 +17,7 @@
     onReindex: () => void
   }
 
-  let { sourceFolder, googleAuthStatus, onSourceFolder, onAnalyse, onGoogleImport, onGoogleAuthChange, onDedupScan, onReindex }: Props = $props()
+  let { libraryPath, sourceFolder, googleAuthStatus, onLibraryPathChange, onSourceFolder, onAnalyse, onGoogleImport, onGoogleAuthChange, onDedupScan, onReindex }: Props = $props()
 
   let connecting: boolean = $state(false)
   let connectError: string | null = $state(null)
@@ -24,6 +26,14 @@
   onMount(async () => {
     stats = await window.keepic.library.getStats()
   })
+
+  async function configureLibraryFolder(): Promise<void> {
+    const result = await window.keepic.config.selectLibraryFolder()
+    if (!result.cancelled && result.path) {
+      onLibraryPathChange(result.path)
+      stats = await window.keepic.library.getStats()
+    }
+  }
 
   async function selectFolder(): Promise<void> {
     const result = await window.keepic.import.selectSourceFolder()
@@ -56,6 +66,20 @@
       <h1 class="text-2xl font-bold text-gray-900">KeePic</h1>
       <p class="text-gray-500 mt-1">Import photos from a local folder or SD card</p>
     </div>
+
+    <!-- Library folder configuration -->
+    <div class="space-y-3">
+      <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Library folder</p>
+      {#if libraryPath}
+        <p class="text-sm text-gray-600 font-mono text-xs bg-gray-100 px-2 py-1 rounded break-all">{libraryPath}</p>
+        <Button variant="outline" onclick={configureLibraryFolder}>Change…</Button>
+      {:else}
+        <p class="text-sm text-amber-600 font-medium">No library folder configured. Select a folder before importing photos.</p>
+        <Button onclick={configureLibraryFolder}>Configure library folder…</Button>
+      {/if}
+    </div>
+
+    <hr class="border-gray-200" />
 
     <!-- Local folder / SD card section -->
     <div class="space-y-3">
