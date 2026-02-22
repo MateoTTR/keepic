@@ -1,6 +1,7 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   AppConfig,
+  GoogleAuthStatus,
   ImportPlan,
   ImportProgress,
   ImportResult,
@@ -43,6 +44,11 @@ export interface KeePickAPI {
     onProgress: (callback: (p: ImportProgress) => void) => void
     onComplete: (callback: (r: ImportResult) => void) => void
     cancel: () => Promise<void>
+  }
+  google: {
+    getAuthStatus: () => Promise<GoogleAuthStatus>
+    connect: () => Promise<{ success: true; email: string } | { error: string }>
+    disconnect: () => Promise<{ success: true } | { error: string }>
   }
 }
 

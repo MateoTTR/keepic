@@ -1,19 +1,42 @@
 <script lang="ts">
   import Button from '../components/ui/Button.svelte'
+  import type { GoogleAuthStatus } from '../../../shared/types'
 
   interface Props {
     sourceFolder: string
+    googleAuthStatus: GoogleAuthStatus | null
     onSourceFolder: (folder: string) => void
     onAnalyse: () => void
+    onGoogleAuthChange: (status: GoogleAuthStatus) => void
   }
 
-  let { sourceFolder, onSourceFolder, onAnalyse }: Props = $props()
+  let { sourceFolder, googleAuthStatus, onSourceFolder, onAnalyse, onGoogleAuthChange }: Props = $props()
+
+  let connecting: boolean = $state(false)
+  let connectError: string | null = $state(null)
 
   async function selectFolder(): Promise<void> {
     const result = await window.keepic.import.selectSourceFolder()
     if (!result.cancelled && result.path) {
       onSourceFolder(result.path)
     }
+  }
+
+  async function connectGoogle(): Promise<void> {
+    connecting = true
+    connectError = null
+    const result = await window.keepic.google.connect()
+    connecting = false
+    if ('error' in result) {
+      connectError = result.error
+    } else {
+      onGoogleAuthChange({ authenticated: true, email: result.email })
+    }
+  }
+
+  async function disconnectGoogle(): Promise<void> {
+    await window.keepic.google.disconnect()
+    onGoogleAuthChange({ authenticated: false })
   }
 </script>
 
@@ -23,7 +46,10 @@
     <p class="text-gray-500 mt-1">Import photos from a local folder or SD card</p>
   </div>
 
+  <!-- Local folder / SD card section -->
   <div class="space-y-3">
+    <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Local folder / SD card</p>
+
     <Button onclick={selectFolder}>Select folder…</Button>
 
     {#if sourceFolder}
@@ -34,14 +60,39 @@
     {:else}
       <p class="text-sm text-gray-400">No folder selected</p>
     {/if}
-  </div>
 
-  <div>
     <Button
       onclick={onAnalyse}
       disabled={!sourceFolder}
     >
       Analyse →
     </Button>
+  </div>
+
+  <hr class="border-gray-200" />
+
+  <!-- Google Photos section -->
+  <div class="space-y-3">
+    <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Google Photos</p>
+
+    {#if googleAuthStatus?.authenticated}
+      <p class="text-sm text-gray-700">
+        Connected as: <span class="font-medium">{googleAuthStatus.email}</span>
+      </p>
+      <div class="flex gap-3">
+        <Button variant="outline" onclick={disconnectGoogle}>Disconnect</Button>
+        <Button disabled>
+          Import from Google Photos →
+          <span class="ml-1 text-xs text-gray-400">(coming soon)</span>
+        </Button>
+      </div>
+    {:else}
+      {#if connectError}
+        <p class="text-sm text-red-600">{connectError}</p>
+      {/if}
+      <Button onclick={connectGoogle} disabled={connecting}>
+        {connecting ? 'Connecting…' : 'Connect Google Photos'}
+      </Button>
+    {/if}
   </div>
 </div>

@@ -12,6 +12,7 @@ import {
   handleCancel,
   type ActiveWorkerRef
 } from './ipc/import-handlers'
+import { handleGetAuthStatus, handleConnect, handleDisconnect } from './ipc/google-auth-handlers'
 import type { ImportPlan } from '../shared/types'
 
 function createWindow(): void {
@@ -124,6 +125,12 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('import:cancel', () => handleCancel(importerWorkerRef))
+
+  // --- Google Auth IPC ---
+
+  ipcMain.handle('google:get-auth-status', () => handleGetAuthStatus())
+  ipcMain.handle('google:connect', () => handleConnect())
+  ipcMain.handle('google:disconnect', () => handleDisconnect())
 
   // --- Library indexer IPC ---
 

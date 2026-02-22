@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import type { AppConfig, ImportPlanEntry, ImportProgress, ImportResult, PlanProgress } from '../../shared/types'
+  import type { AppConfig, GoogleAuthStatus, ImportPlanEntry, ImportProgress, ImportResult, PlanProgress } from '../../shared/types'
   import HomeScreen from './screens/HomeScreen.svelte'
   import PlanningScreen from './screens/PlanningScreen.svelte'
   import ReviewScreen from './screens/ReviewScreen.svelte'
@@ -17,9 +17,11 @@
   let livePhotosDiscarded: number = $state(0)
   let execProgress: ImportProgress | null = $state(null)
   let importResult: ImportResult | null = $state(null)
+  let googleAuthStatus: GoogleAuthStatus | null = $state(null)
 
   onMount(async () => {
     config = await window.keepic.config.get()
+    googleAuthStatus = await window.keepic.google.getAuthStatus()
   })
 
   function handleSourceFolder(folder: string): void {
@@ -70,6 +72,10 @@
     importResult = null
     currentScreen = 'home'
   }
+
+  function handleGoogleAuthChange(status: GoogleAuthStatus): void {
+    googleAuthStatus = status
+  }
 </script>
 
 <div class="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -77,8 +83,10 @@
     {#if currentScreen === 'home'}
       <HomeScreen
         {sourceFolder}
+        {googleAuthStatus}
         onSourceFolder={handleSourceFolder}
         onAnalyse={handleAnalyse}
+        onGoogleAuthChange={handleGoogleAuthChange}
       />
     {:else if currentScreen === 'planning'}
       <PlanningScreen

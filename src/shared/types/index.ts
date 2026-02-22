@@ -107,3 +107,8 @@ export interface ImportResult {
   errors: Array<{ sourcePath: string; error: string }>
   status: ImportStatus
 }
+
+export interface GoogleAuthStatus {
+  authenticated: boolean
+  email?: string
+}
