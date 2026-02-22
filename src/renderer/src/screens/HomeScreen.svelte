@@ -12,9 +12,10 @@
     onGoogleImport: () => void
     onGoogleAuthChange: (status: GoogleAuthStatus) => void
     onDedupScan: () => void
+    onReindex: () => void
   }
 
-  let { sourceFolder, googleAuthStatus, onSourceFolder, onAnalyse, onGoogleImport, onGoogleAuthChange, onDedupScan }: Props = $props()
+  let { sourceFolder, googleAuthStatus, onSourceFolder, onAnalyse, onGoogleImport, onGoogleAuthChange, onDedupScan, onReindex }: Props = $props()
 
   let connecting: boolean = $state(false)
   let connectError: string | null = $state(null)
@@ -109,6 +110,7 @@
     <div class="space-y-3">
       <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Library</p>
       <Button variant="outline" onclick={onDedupScan}>Scan for duplicates</Button>
+      <Button variant="outline" onclick={onReindex}>Re-index library</Button>
     </div>
   </div>
 

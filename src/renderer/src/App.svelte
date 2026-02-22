@@ -8,8 +8,9 @@
   import ExecutionScreen from './screens/ExecutionScreen.svelte'
   import ResultScreen from './screens/ResultScreen.svelte'
   import DeduplicationScreen from './screens/DeduplicationScreen.svelte'
+  import ReindexScreen from './screens/ReindexScreen.svelte'
 
-  type Screen = 'home' | 'google-download' | 'planning' | 'review' | 'executing' | 'result' | 'dedup-scan'
+  type Screen = 'home' | 'google-download' | 'planning' | 'review' | 'executing' | 'result' | 'dedup-scan' | 'reindex'
 
   let currentScreen: Screen = $state('home')
   let sourceFolder: string = $state('')
@@ -98,6 +99,10 @@
   function handleDedupScan(): void {
     currentScreen = 'dedup-scan'
   }
+
+  function handleReindex(): void {
+    currentScreen = 'reindex'
+  }
 </script>
 
 <div class="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -111,6 +116,7 @@
         onGoogleImport={handleGoogleImport}
         onGoogleAuthChange={handleGoogleAuthChange}
         onDedupScan={handleDedupScan}
+        onReindex={handleReindex}
       />
     {:else if currentScreen === 'google-download'}
       <GoogleDownloadScreen
@@ -144,6 +150,8 @@
       />
     {:else if currentScreen === 'dedup-scan'}
       <DeduplicationScreen onBack={handleReset} />
+    {:else if currentScreen === 'reindex'}
+      <ReindexScreen onBack={handleReset} />
     {/if}
   </div>
 </div>
