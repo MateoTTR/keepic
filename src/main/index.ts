@@ -13,6 +13,7 @@ import {
   type ActiveWorkerRef
 } from './ipc/import-handlers'
 import { handleGetAuthStatus, handleConnect, handleDisconnect } from './ipc/google-auth-handlers'
+import { handleGetLibraryStats } from './ipc/library-stats-handler'
 import {
   handleGetLastDownloadDate,
   handleCleanupDownloadDir,
@@ -173,6 +174,13 @@ app.whenReady().then(() => {
   ipcMain.handle('google:cleanup-download-dir', (_event, { dirPath }: { dirPath: string }) =>
     handleCleanupDownloadDir(dirPath)
   )
+
+  // --- Library stats IPC ---
+
+  ipcMain.handle('library:get-stats', () => {
+    if (!database) return null
+    return handleGetLibraryStats(database)
+  })
 
   // --- Library indexer IPC ---
 

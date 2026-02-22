@@ -8,6 +8,7 @@ import type {
   ImportPlan,
   ImportProgress,
   ImportResult,
+  LibraryStats,
   PlanProgress,
   SelectLibraryFolderResult
 } from '../shared/types'
@@ -41,7 +42,9 @@ const keepicAPI = {
       }) => void
     ) => {
       ipcRenderer.on('library:index-complete', (_event, data) => callback(data))
-    }
+    },
+    getStats: (): Promise<LibraryStats | null> =>
+      ipcRenderer.invoke('library:get-stats') as Promise<LibraryStats | null>
   },
   import: {
     selectSourceFolder: (): Promise<{ cancelled: boolean; path?: string }> =>

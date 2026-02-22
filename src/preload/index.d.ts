@@ -9,6 +9,7 @@ import type {
   ImportResult,
   IndexProgress,
   IndexResult,
+  LibraryStats,
   PlanProgress,
   SelectLibraryFolderResult
 } from '../shared/types'
@@ -33,6 +34,7 @@ export interface KeePickAPI {
     startIndex: () => Promise<StartIndexResult>
     onIndexProgress: (callback: (progress: IndexProgress) => void) => void
     onIndexComplete: (callback: (result: IndexCompleteEvent) => void) => void
+    getStats: () => Promise<LibraryStats | null>
   }
   import: {
     selectSourceFolder: () => Promise<{ cancelled: boolean; path?: string }>

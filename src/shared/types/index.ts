@@ -125,3 +125,18 @@ export interface GoogleDownloadResult {
   errors: Array<{ filename: string; error: string }>
   downloadDir: string // absolute path to the staging folder
 }
+
+export interface LibraryStats {
+  totalPhotos: number
+  totalSizeBytes: number
+  oldestDate: string | null // ISO date string (YYYY-MM-DD) or null if empty
+  newestDate: string | null // ISO date string (YYYY-MM-DD) or null if empty
+  photosByYear: Array<{ year: string; count: number }> // sorted ascending
+  recentImports: Array<{
+    // last 5 completed import_jobs, newest first
+    source: ImportSource
+    finishedAt: string // ISO 8601
+    photosImported: number
+    photosSkipped: number
+  }>
+}
