@@ -118,12 +118,8 @@ Before placing a photo in the library, the app verifies:
 
 #### 2.4.4 Import from Local Folders
 - Same behavior as SD card import
-- Suitable for WhatsApp/Signal media folders, Downloads, etc.
-
-#### 2.4.5 Import from WhatsApp / Signal
-> Scope: folder scan only — no API or app integration.
-- The user points to the media folder; the app imports via the local folder flow
-- Photos without EXIF use the fallback date chain (see §2.6)
+- Suitable for any local folder (Downloads, photos exported from WhatsApp, etc.)
+- WhatsApp/Signal media folders on Android can be accessed by copying them to the PC first (direct device import is not supported — see TASK-014 decision in backlog)
 
 ### 2.5 Deduplication
 
