@@ -1,7 +1,7 @@
 // Shared types between main process, workers, and renderer
 
 export type DateSource = 'exif' | 'filename' | 'file_mtime' | 'import'
-export type ImportSource = 'local' | 'google_photos' | 'sd_card'
+export type ImportSource = 'local' | 'google_photos'
 export type ImportStatus = 'running' | 'completed' | 'failed' | 'cancelled'
 
 export interface Photo {

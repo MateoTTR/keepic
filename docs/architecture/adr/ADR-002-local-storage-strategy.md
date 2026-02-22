@@ -126,7 +126,7 @@ CREATE TABLE photos (
   height            INTEGER,
   file_size         INTEGER,
   file_mtime        TEXT,                   -- used to detect changes on re-index
-  source            TEXT,                   -- 'local' | 'google_photos' | 'sd_card'
+  source            TEXT,                   -- 'local' | 'google_photos'
   google_id         TEXT,                   -- Google Photos media item ID (dedup on re-import)
   imported_at       TEXT NOT NULL,          -- ISO 8601
   created_at        TEXT NOT NULL
@@ -135,7 +135,7 @@ CREATE TABLE photos (
 -- Import jobs history (one row per import session)
 CREATE TABLE import_jobs (
   id                   INTEGER PRIMARY KEY,
-  source               TEXT NOT NULL,       -- 'local' | 'google_photos' | 'sd_card'
+  source               TEXT NOT NULL,       -- 'local' | 'google_photos'
   started_at           TEXT NOT NULL,
   finished_at          TEXT,
   status               TEXT NOT NULL,       -- 'running' | 'completed' | 'failed' | 'cancelled'
