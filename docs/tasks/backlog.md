@@ -46,9 +46,11 @@
 | [TASK-013](TASK-013-google-photos-import.md) | Implement Google Photos media fetch, date filter, and download | `[~]` | 2026-02-22-session-011 |
 | [TASK-014](TASK-014-whatsapp-signal-import.md) | Implement WhatsApp / Signal folder import | `[-]` | — |
 
+> **TASK-014 cancelled**: WhatsApp/Signal media is sandboxed on iOS (app container, no bulk export path) and increasingly restricted on Android 10+ (app-private storage). Users export photos manually to a folder and use the existing local import flow. No unique integration work required.
+
 ## Phase 3 — Browsing UI
 
-> **Note**: Browse/view features are deferred to a later version. Users rely on OS file explorer and native viewers in v1.
+> **Cancelled**: users rely on OS file explorer and native viewers. No unique value over macOS Finder/Photos given the iOS-first user base and the app's filesystem-first design. Tasks 015–018 below are cancelled.
 
 | # | Title | Status | Session |
 |---|---|---|---|
@@ -61,20 +63,19 @@
 
 | # | Title | Status | Session |
 |---|---|---|---|
-| [TASK-015](TASK-015-library-stats.md) | Implement library statistics view | `[ ]` | — |
-| [TASK-016](TASK-016-deduplication-scan.md) | Implement standalone deduplication scan on existing library | `[ ]` | — |
-| [TASK-017](TASK-017-reindex.md) | Implement manual re-index of library folder | `[ ]` | — |
+| [TASK-019](TASK-019-library-stats.md) | Implement library statistics view | `[ ]` | — |
+| [TASK-020](TASK-020-deduplication-scan.md) | Implement standalone deduplication scan on existing library | `[ ]` | — |
+| [TASK-021](TASK-021-reindex.md) | Implement manual re-index of library folder | `[ ]` | — |
 
 ## Phase 5 — Packaging & Distribution
 
 | # | Title | Status | Session |
 |---|---|---|---|
-| [TASK-018](TASK-018-packaging.md) | Configure electron-builder for Windows (NSIS) + macOS (DMG) releases | `[ ]` | — |
+| [TASK-022](TASK-022-packaging.md) | Configure electron-builder for Windows (NSIS) + macOS (DMG) releases | `[ ]` | — |
 
 ---
 
 ## Upcoming / Not Yet Planned
 
-- In-app browse/viewer (Phase 6 — deferred)
 - Event folder creation UI
 - Settings screen (currently embedded in first-launch flow)
