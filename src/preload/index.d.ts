@@ -1,9 +1,13 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   AppConfig,
-  SelectLibraryFolderResult,
+  ImportPlan,
+  ImportProgress,
+  ImportResult,
   IndexProgress,
-  IndexResult
+  IndexResult,
+  PlanProgress,
+  SelectLibraryFolderResult
 } from '../shared/types'
 
 export interface StartIndexResult {
@@ -26,6 +30,19 @@ export interface KeePickAPI {
     startIndex: () => Promise<StartIndexResult>
     onIndexProgress: (callback: (progress: IndexProgress) => void) => void
     onIndexComplete: (callback: (result: IndexCompleteEvent) => void) => void
+  }
+  import: {
+    selectSourceFolder: () => Promise<{ cancelled: boolean; path?: string }>
+    plan: (
+      sourceFolder: string,
+      onProgress: (p: PlanProgress) => void
+    ) => Promise<ImportPlan | { error: string }>
+    execute: (
+      plan: ImportPlan
+    ) => Promise<{ started: boolean } | { alreadyRunning: boolean } | { error: string }>
+    onProgress: (callback: (p: ImportProgress) => void) => void
+    onComplete: (callback: (r: ImportResult) => void) => void
+    cancel: () => Promise<void>
   }
 }
 
