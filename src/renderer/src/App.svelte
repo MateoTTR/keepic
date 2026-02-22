@@ -7,8 +7,9 @@
   import ReviewScreen from './screens/ReviewScreen.svelte'
   import ExecutionScreen from './screens/ExecutionScreen.svelte'
   import ResultScreen from './screens/ResultScreen.svelte'
+  import DeduplicationScreen from './screens/DeduplicationScreen.svelte'
 
-  type Screen = 'home' | 'google-download' | 'planning' | 'review' | 'executing' | 'result'
+  type Screen = 'home' | 'google-download' | 'planning' | 'review' | 'executing' | 'result' | 'dedup-scan'
 
   let currentScreen: Screen = $state('home')
   let sourceFolder: string = $state('')
@@ -93,6 +94,10 @@
   function handleGoogleAuthChange(status: GoogleAuthStatus): void {
     googleAuthStatus = status
   }
+
+  function handleDedupScan(): void {
+    currentScreen = 'dedup-scan'
+  }
 </script>
 
 <div class="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -105,6 +110,7 @@
         onAnalyse={handleAnalyse}
         onGoogleImport={handleGoogleImport}
         onGoogleAuthChange={handleGoogleAuthChange}
+        onDedupScan={handleDedupScan}
       />
     {:else if currentScreen === 'google-download'}
       <GoogleDownloadScreen
@@ -136,6 +142,8 @@
         onImportMore={handleReset}
         onDone={handleReset}
       />
+    {:else if currentScreen === 'dedup-scan'}
+      <DeduplicationScreen onBack={handleReset} />
     {/if}
   </div>
 </div>

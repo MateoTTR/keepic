@@ -14,6 +14,7 @@ import {
 } from './ipc/import-handlers'
 import { handleGetAuthStatus, handleConnect, handleDisconnect } from './ipc/google-auth-handlers'
 import { handleGetLibraryStats } from './ipc/library-stats-handler'
+import { handleScanDuplicates } from './ipc/dedup-scan-handler'
 import {
   handleGetLastDownloadDate,
   handleCleanupDownloadDir,
@@ -180,6 +181,11 @@ app.whenReady().then(() => {
   ipcMain.handle('library:get-stats', () => {
     if (!database) return null
     return handleGetLibraryStats(database)
+  })
+
+  ipcMain.handle('library:scan-duplicates', () => {
+    if (!database) return []
+    return handleScanDuplicates(database)
   })
 
   // --- Library indexer IPC ---

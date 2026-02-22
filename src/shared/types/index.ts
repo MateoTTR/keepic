@@ -126,6 +126,19 @@ export interface GoogleDownloadResult {
   downloadDir: string // absolute path to the staging folder
 }
 
+export interface DuplicatePhoto {
+  path: string
+  filename: string
+  fileSize: number | null
+  dateTaken: string | null
+  importedAt: string
+}
+
+export interface DuplicateGroup {
+  phash: string
+  photos: DuplicatePhoto[] // always 2+ items, sorted by importedAt ASC
+}
+
 export interface LibraryStats {
   totalPhotos: number
   totalSizeBytes: number

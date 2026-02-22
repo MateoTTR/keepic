@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
   AppConfig,
+  DuplicateGroup,
   GoogleAuthStatus,
   GoogleDownloadProgress,
   GoogleDownloadResult,
@@ -44,7 +45,9 @@ const keepicAPI = {
       ipcRenderer.on('library:index-complete', (_event, data) => callback(data))
     },
     getStats: (): Promise<LibraryStats | null> =>
-      ipcRenderer.invoke('library:get-stats') as Promise<LibraryStats | null>
+      ipcRenderer.invoke('library:get-stats') as Promise<LibraryStats | null>,
+    scanDuplicates: (): Promise<DuplicateGroup[]> =>
+      ipcRenderer.invoke('library:scan-duplicates') as Promise<DuplicateGroup[]>
   },
   import: {
     selectSourceFolder: (): Promise<{ cancelled: boolean; path?: string }> =>

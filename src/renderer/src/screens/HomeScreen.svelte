@@ -11,9 +11,10 @@
     onAnalyse: () => void
     onGoogleImport: () => void
     onGoogleAuthChange: (status: GoogleAuthStatus) => void
+    onDedupScan: () => void
   }
 
-  let { sourceFolder, googleAuthStatus, onSourceFolder, onAnalyse, onGoogleImport, onGoogleAuthChange }: Props = $props()
+  let { sourceFolder, googleAuthStatus, onSourceFolder, onAnalyse, onGoogleImport, onGoogleAuthChange, onDedupScan }: Props = $props()
 
   let connecting: boolean = $state(false)
   let connectError: string | null = $state(null)
@@ -100,6 +101,14 @@
           {connecting ? 'Connecting…' : 'Connect Google Photos'}
         </Button>
       {/if}
+    </div>
+
+    <hr class="border-gray-200" />
+
+    <!-- Library management section -->
+    <div class="space-y-3">
+      <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Library</p>
+      <Button variant="outline" onclick={onDedupScan}>Scan for duplicates</Button>
     </div>
   </div>
 
