@@ -1,7 +1,8 @@
 # ADR-003 — Google Photos API Integration
 
-> **Status**: Proposed
+> **Status**: Accepted
 > **Date**: 2026-02-21
+> **Decided**: 2026-02-22
 > **Deciders**: Project owner
 
 ---
@@ -39,12 +40,12 @@ There are two approaches to OAuth 2.0 from a desktop app: the **loopback redirec
 - Official and supported API
 - Loopback OAuth is the recommended approach for desktop apps (no OOB deprecation issues)
 - Supports listing albums, paginated media items, downloading originals
-- Incremental sync: use `pageToken` to resume, filter by `createdAfter` date
+- Incremental sync: filter by creation date, remember last download date
 
 **Cons**:
 - Google Photos Library API requires a Google Cloud project with OAuth credentials (the user or developer must set this up)
 - The API has quotas (10,000 requests/day for free tier) — not a problem for personal use
-- **Important limitation**: downloaded URLs are temporary (valid ~60 min); originals must be downloaded immediately
+- **Important limitation**: downloaded URLs are temporary (valid ~60 min); originals must be downloaded immediately after listing
 - The API does not provide raw EXIF data — EXIF must be read from the downloaded file
 - Google may change or restrict the API (happened in 2019 when write scopes were heavily restricted)
 
@@ -85,11 +86,53 @@ There are two approaches to OAuth 2.0 from a desktop app: the **loopback redirec
 
 ## Decision
 
-> **To be decided** — Proposed approach: **Option A (Official API + loopback OAuth)**
+**Option A — Official Google Photos Library API with loopback OAuth 2.0 + PKCE.**
 
-**Rationale**: Option A provides the best user experience with full automation. Option B is a fallback for users who prefer not to create a Google Cloud project. Option C is rejected.
+**Rationale**: Option A provides the best user experience with full automation. Option B is a
+fallback for users who prefer not to create a Google Cloud project. Option C is rejected.
 
-**Implementation note**: The app may ship with a developer-provided OAuth client ID (client_id + client_secret in the app bundle), or require the user to provide their own. The latter is more private but significantly less user-friendly. This is a sub-decision to be made.
+**Implementation note**: The app ships with a developer-provided OAuth client ID (client_id +
+client_secret baked in at build time from environment variables). This is the standard pattern
+for personal-use desktop apps and avoids requiring users to set up a Google Cloud project.
+
+---
+
+## Import Pipeline Architecture (decided in TASK-013)
+
+The Google Photos import uses a **two-phase pipeline**, deliberately consistent with the existing
+local import flow:
+
+### Phase 1 — Download (new)
+
+A dedicated worker thread (`google-photos-download.worker.ts`) handles:
+1. Paginated listing via `mediaItems:search` (filter: `PHOTO` type only, date range)
+2. Download of each original file to a local staging folder (`userData/temp/google-<ts>/`)
+3. Token refresh if the access token expires mid-download
+4. Records a `google_photos` import_job in the DB upon completion
+
+**Why a dedicated download phase instead of streaming import:**
+- The temporary URL constraint (~60 min) requires downloading immediately after listing — a
+  two-pass approach (list all then download) is not viable.
+- By downloading first and analysing later, we decouple the network-bound phase from the
+  CPU-bound phase (pHash, EXIF, HEIC conversion).
+- The staging folder is a plain folder of image files — it can feed directly into Phase 2.
+
+### Phase 2 — Local import (existing, unchanged)
+
+The downloaded staging folder is passed as `sourceFolder` to the existing local import pipeline:
+plan → user review → execute. Zero new code required for this phase.
+
+**Why reuse the local import pipeline instead of a custom Google Photos pipeline:**
+- Photos already manually imported from Google Photos (before using KeePic, no `google_id` in DB)
+  are correctly detected as duplicates via pHash during planning.
+- The user reviews duplicates before any write to the library — consistent UX.
+- Maintenance burden is minimised: a single import pipeline for all source types.
+
+### google_id — not stored
+
+The `photos.google_id` column exists in the schema but is **not populated** by this pipeline.
+Deduplication relies exclusively on pHash (same as local import). Incremental sync is achieved
+via the date filter (`last_imported_date` recorded in `import_jobs`), not by google_id lookup.
 
 ---
 
@@ -107,42 +150,52 @@ This grants read-only access to the user's media items and albums. No write acce
 
 ## Token Storage
 
-- Access token and refresh token stored in the **OS keychain** (Windows Credential Manager, macOS Keychain, libsecret on Linux)
-- Use a library like `keytar` (Node.js / Electron) or the Tauri equivalent
-- Tokens are never stored in plain text on disk
+- Access token and refresh token stored in the **OS keychain** (Windows Credential Manager,
+  macOS Keychain, libsecret on Linux) via `keytar`.
+- Tokens are never stored in plain text on disk.
+- Token refresh: handled in the main process via `getValidAccessToken()` (`google-auth.ts`).
+  The download worker receives a token snapshot at start and refreshes it independently via
+  HTTP if the token expires during a long download. The updated token is sent back to the main
+  process for keytar persistence on completion.
 
 ---
 
 ## Incremental Sync Strategy
 
 ```
-On each sync run:
-  1. Load last_sync_timestamp from import_jobs table
-  2. Fetch media items from Google Photos API, filtered by creationTime >= last_sync_timestamp
-  3. For each new item:
-     a. Check if google_id already exists in DB → skip if yes
-     b. Download original file
-     c. Compute pHash → deduplication check
-     d. Store in library + insert DB record
-  4. Update last_sync_timestamp = now()
+On each Google Photos import:
+  1. Query import_jobs WHERE source='google_photos' AND status='completed'
+     → last_imported_date (= date of previous download completion; null on first import)
+  2. Default start date = last_imported_date + 1 day (or today − 365 days on first import)
+  3. User adjusts start date if needed
+  4. Download all PHOTO items with creationTime >= start date
+  5. Record new import_job with last_imported_date = today
+  6. Run downloaded folder through local import pipeline
+     → pHash deduplication catches any overlaps
 ```
+
+This approach records "today's date" (download start time) as the next start boundary, not the
+date of the last downloaded photo. This avoids one-day overlaps on subsequent imports.
 
 ---
 
 ## Consequences
 
 ### Positive
-- Fully automated, incremental sync
+- Fully automated, incremental sync with user-adjustable date filter
 - Secure token storage via OS keychain
 - Minimal OAuth scope (read-only)
+- Handles pre-existing manually imported Google Photos (pHash deduplication)
+- Phase 2 reuses existing code — no maintenance overhead
 
 ### Negative / Trade-offs
-- Requires a Google Cloud project with OAuth credentials (developer burden or user burden)
+- Requires a Google Cloud project with OAuth credentials (developer burden)
 - API quotas apply (not a concern for personal use at ~50k photos)
-- Temporary download URLs require immediate download after listing
+- Downloaded staging folder can become orphaned if Phase 2 is cancelled (cleaned up on next reset)
+- `google_id` not stored — re-import same date range will re-download files (caught as dups by pHash)
 
 ### Neutral
-- A fallback "import from Takeout folder" feature would be a good complement for users migrating an existing library
+- A fallback "import from Takeout folder" feature would complement this for bulk migrations
 
 ---
 

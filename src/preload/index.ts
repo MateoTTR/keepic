@@ -3,6 +3,8 @@ import { electronAPI } from '@electron-toolkit/preload'
 import type {
   AppConfig,
   GoogleAuthStatus,
+  GoogleDownloadProgress,
+  GoogleDownloadResult,
   ImportPlan,
   ImportProgress,
   ImportResult,
@@ -78,7 +80,28 @@ const keepicAPI = {
       ipcRenderer.invoke('google:connect'),
 
     disconnect: (): Promise<{ success: true } | { error: string }> =>
-      ipcRenderer.invoke('google:disconnect')
+      ipcRenderer.invoke('google:disconnect'),
+
+    getLastDownloadDate: (): Promise<{ date: string | null }> =>
+      ipcRenderer.invoke('google:get-last-download-date'),
+
+    startDownload: (
+      startDate: string
+    ): Promise<{ started: true } | { alreadyRunning: true } | { error: string }> =>
+      ipcRenderer.invoke('google:start-download', { startDate }),
+
+    cancelDownload: (): Promise<void> => ipcRenderer.invoke('google:cancel-download'),
+
+    onDownloadProgress: (callback: (p: GoogleDownloadProgress) => void): void => {
+      ipcRenderer.on('google:download-progress', (_event, data) => callback(data))
+    },
+
+    onDownloadComplete: (callback: (r: GoogleDownloadResult) => void): void => {
+      ipcRenderer.on('google:download-complete', (_event, data) => callback(data))
+    },
+
+    cleanupDownloadDir: (dirPath: string): Promise<void> =>
+      ipcRenderer.invoke('google:cleanup-download-dir', { dirPath })
   }
 }
 

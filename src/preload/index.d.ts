@@ -2,6 +2,8 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   AppConfig,
   GoogleAuthStatus,
+  GoogleDownloadProgress,
+  GoogleDownloadResult,
   ImportPlan,
   ImportProgress,
   ImportResult,
@@ -49,6 +51,14 @@ export interface KeePickAPI {
     getAuthStatus: () => Promise<GoogleAuthStatus>
     connect: () => Promise<{ success: true; email: string } | { error: string }>
     disconnect: () => Promise<{ success: true } | { error: string }>
+    getLastDownloadDate: () => Promise<{ date: string | null }>
+    startDownload: (
+      startDate: string
+    ) => Promise<{ started: true } | { alreadyRunning: true } | { error: string }>
+    cancelDownload: () => Promise<void>
+    onDownloadProgress: (callback: (p: GoogleDownloadProgress) => void) => void
+    onDownloadComplete: (callback: (r: GoogleDownloadResult) => void) => void
+    cleanupDownloadDir: (dirPath: string) => Promise<void>
   }
 }
 

@@ -7,10 +7,11 @@
     googleAuthStatus: GoogleAuthStatus | null
     onSourceFolder: (folder: string) => void
     onAnalyse: () => void
+    onGoogleImport: () => void
     onGoogleAuthChange: (status: GoogleAuthStatus) => void
   }
 
-  let { sourceFolder, googleAuthStatus, onSourceFolder, onAnalyse, onGoogleAuthChange }: Props = $props()
+  let { sourceFolder, googleAuthStatus, onSourceFolder, onAnalyse, onGoogleImport, onGoogleAuthChange }: Props = $props()
 
   let connecting: boolean = $state(false)
   let connectError: string | null = $state(null)
@@ -81,10 +82,7 @@
       </p>
       <div class="flex gap-3">
         <Button variant="outline" onclick={disconnectGoogle}>Disconnect</Button>
-        <Button disabled>
-          Import from Google Photos →
-          <span class="ml-1 text-xs text-gray-400">(coming soon)</span>
-        </Button>
+        <Button onclick={onGoogleImport}>Import from Google Photos →</Button>
       </div>
     {:else}
       {#if connectError}
