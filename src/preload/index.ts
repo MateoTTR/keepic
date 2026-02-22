@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
   AppConfig,
+  GoogleAuthStatus,
   ImportPlan,
   ImportProgress,
   ImportResult,
@@ -69,6 +70,15 @@ const keepicAPI = {
     },
 
     cancel: (): Promise<void> => ipcRenderer.invoke('import:cancel')
+  },
+  google: {
+    getAuthStatus: (): Promise<GoogleAuthStatus> => ipcRenderer.invoke('google:get-auth-status'),
+
+    connect: (): Promise<{ success: true; email: string } | { error: string }> =>
+      ipcRenderer.invoke('google:connect'),
+
+    disconnect: (): Promise<{ success: true } | { error: string }> =>
+      ipcRenderer.invoke('google:disconnect')
   }
 }
 
