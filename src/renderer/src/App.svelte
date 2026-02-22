@@ -1,16 +1,18 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import type { AppConfig, GoogleAuthStatus, ImportPlanEntry, ImportProgress, ImportResult, PlanProgress } from '../../shared/types'
+  import type { AppConfig, GoogleAuthStatus, GoogleDownloadResult, ImportPlanEntry, ImportProgress, ImportResult, PlanProgress } from '../../shared/types'
   import HomeScreen from './screens/HomeScreen.svelte'
+  import GoogleDownloadScreen from './screens/GoogleDownloadScreen.svelte'
   import PlanningScreen from './screens/PlanningScreen.svelte'
   import ReviewScreen from './screens/ReviewScreen.svelte'
   import ExecutionScreen from './screens/ExecutionScreen.svelte'
   import ResultScreen from './screens/ResultScreen.svelte'
 
-  type Screen = 'home' | 'planning' | 'review' | 'executing' | 'result'
+  type Screen = 'home' | 'google-download' | 'planning' | 'review' | 'executing' | 'result'
 
   let currentScreen: Screen = $state('home')
   let sourceFolder: string = $state('')
+  let googleDownloadDir: string = $state('')
   let config: AppConfig | null = $state(null)
   let planProgress: PlanProgress | null = $state(null)
   let plan: ImportPlanEntry[] = $state([])
@@ -26,6 +28,17 @@
 
   function handleSourceFolder(folder: string): void {
     sourceFolder = folder
+  }
+
+  function handleGoogleImport(): void {
+    currentScreen = 'google-download'
+  }
+
+  function handleDownloadComplete(result: GoogleDownloadResult): void {
+    googleDownloadDir = result.downloadDir
+    sourceFolder = result.downloadDir
+    planProgress = null
+    currentScreen = 'planning'
   }
 
   function handleAnalyse(): void {
@@ -64,6 +77,10 @@
   }
 
   function handleReset(): void {
+    if (googleDownloadDir) {
+      void window.keepic.google.cleanupDownloadDir(googleDownloadDir)
+      googleDownloadDir = ''
+    }
     sourceFolder = ''
     planProgress = null
     plan = []
@@ -86,7 +103,13 @@
         {googleAuthStatus}
         onSourceFolder={handleSourceFolder}
         onAnalyse={handleAnalyse}
+        onGoogleImport={handleGoogleImport}
         onGoogleAuthChange={handleGoogleAuthChange}
+      />
+    {:else if currentScreen === 'google-download'}
+      <GoogleDownloadScreen
+        onDownloadComplete={handleDownloadComplete}
+        onBack={handleReset}
       />
     {:else if currentScreen === 'planning'}
       <PlanningScreen

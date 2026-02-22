@@ -112,3 +112,16 @@ export interface GoogleAuthStatus {
   authenticated: boolean
   email?: string
 }
+
+export interface GoogleDownloadProgress {
+  fetched: number // API items returned so far (across all pages)
+  downloaded: number // files written to disk
+  currentFile: string | null
+}
+
+export interface GoogleDownloadResult {
+  status: ImportStatus
+  downloaded: number
+  errors: Array<{ filename: string; error: string }>
+  downloadDir: string // absolute path to the staging folder
+}

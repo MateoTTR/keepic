@@ -13,6 +13,13 @@ import {
   type ActiveWorkerRef
 } from './ipc/import-handlers'
 import { handleGetAuthStatus, handleConnect, handleDisconnect } from './ipc/google-auth-handlers'
+import {
+  handleGetLastDownloadDate,
+  handleCleanupDownloadDir,
+  handleStartDownload,
+  handleCancelDownload,
+  type ActiveWorkerRef as GoogleActiveWorkerRef
+} from './ipc/google-photos-handlers'
 import type { ImportPlan } from '../shared/types'
 
 function createWindow(): void {
@@ -62,8 +69,12 @@ app.whenReady().then(() => {
   // Track the running importer worker (Phase 2) to prevent concurrent imports.
   const importerWorkerRef: ActiveWorkerRef = { value: null }
 
+  // Track the running Google Photos download worker.
+  const googleDownloadWorkerRef: GoogleActiveWorkerRef = { value: null }
+
   const plannerWorkerPath = join(__dirname, '../workers/planner.worker.js')
   const importerWorkerPath = join(__dirname, '../workers/importer.worker.js')
+  const googleDownloadWorkerPath = join(__dirname, '../workers/google-photos-download.worker.js')
   const dbPath = join(app.getPath('userData'), 'index.db')
 
   // --- Config IPC ---
@@ -131,6 +142,37 @@ app.whenReady().then(() => {
   ipcMain.handle('google:get-auth-status', () => handleGetAuthStatus())
   ipcMain.handle('google:connect', () => handleConnect())
   ipcMain.handle('google:disconnect', () => handleDisconnect())
+
+  // --- Google Photos Download IPC ---
+
+  ipcMain.handle('google:get-last-download-date', () => {
+    if (!database) return { date: null }
+    return handleGetLastDownloadDate(database)
+  })
+
+  ipcMain.handle('google:start-download', async (event, { startDate }: { startDate: string }) => {
+    const libraryPath = configManager.get().libraryPath
+    if (!libraryPath) return { error: 'No library path configured' }
+    if (!database) return { error: 'Database not open' }
+
+    return handleStartDownload(
+      startDate,
+      database,
+      dbPath,
+      app.getPath('userData'),
+      configManager.get(),
+      (progress) => event.sender.send('google:download-progress', progress),
+      (result) => event.sender.send('google:download-complete', result),
+      googleDownloadWorkerRef,
+      googleDownloadWorkerPath
+    )
+  })
+
+  ipcMain.handle('google:cancel-download', () => handleCancelDownload(googleDownloadWorkerRef))
+
+  ipcMain.handle('google:cleanup-download-dir', (_event, { dirPath }: { dirPath: string }) =>
+    handleCleanupDownloadDir(dirPath)
+  )
 
   // --- Library indexer IPC ---
 
