@@ -1,6 +1,7 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   AppConfig,
+  DuplicateGroup,
   GoogleAuthStatus,
   GoogleDownloadProgress,
   GoogleDownloadResult,
@@ -35,6 +36,7 @@ export interface KeePickAPI {
     onIndexProgress: (callback: (progress: IndexProgress) => void) => void
     onIndexComplete: (callback: (result: IndexCompleteEvent) => void) => void
     getStats: () => Promise<LibraryStats | null>
+    scanDuplicates: () => Promise<DuplicateGroup[]>
   }
   import: {
     selectSourceFolder: () => Promise<{ cancelled: boolean; path?: string }>
