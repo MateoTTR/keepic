@@ -1,6 +1,28 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
+import { Worker } from 'worker_threads'
 import { is } from '@electron-toolkit/utils'
+import { ConfigManager } from './config'
+import { KeePicDatabase } from './db/database'
+import { handleGetConfig, handleSelectLibraryFolder } from './ipc/config-handlers'
+import {
+  handleSelectSourceFolder,
+  handlePlan,
+  handleExecute,
+  handleCancel,
+  type ActiveWorkerRef
+} from './ipc/import-handlers'
+import { handleGetAuthStatus, handleConnect, handleDisconnect } from './ipc/google-auth-handlers'
+import { handleGetLibraryStats } from './ipc/library-stats-handler'
+import { handleScanDuplicates } from './ipc/dedup-scan-handler'
+import {
+  handleGetLastDownloadDate,
+  handleCleanupDownloadDir,
+  handleStartDownload,
+  handleCancelDownload,
+  type ActiveWorkerRef as GoogleActiveWorkerRef
+} from './ipc/google-photos-handlers'
+import type { ImportPlan } from '../shared/types'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -33,6 +55,174 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  const configManager = new ConfigManager(app.getPath('userData'))
+  configManager.load()
+
+  // Open the database if a library path is already configured.
+  let database: KeePicDatabase | null = null
+  if (configManager.get().libraryPath) {
+    database = new KeePicDatabase(join(app.getPath('userData'), 'index.db'))
+    database.open()
+  }
+
+  // Track the running indexer worker to prevent concurrent runs.
+  let indexerWorker: Worker | null = null
+
+  // Track the running importer worker (Phase 2) to prevent concurrent imports.
+  const importerWorkerRef: ActiveWorkerRef = { value: null }
+
+  // Track the running Google Photos download worker.
+  const googleDownloadWorkerRef: GoogleActiveWorkerRef = { value: null }
+
+  const plannerWorkerPath = join(__dirname, '../workers/planner.worker.js')
+  const importerWorkerPath = join(__dirname, '../workers/importer.worker.js')
+  const googleDownloadWorkerPath = join(__dirname, '../workers/google-photos-download.worker.js')
+  const dbPath = join(app.getPath('userData'), 'index.db')
+
+  // --- Config IPC ---
+
+  ipcMain.handle('config:get', () => handleGetConfig(configManager))
+
+  ipcMain.handle('config:select-library-folder', async () => {
+    const result = await handleSelectLibraryFolder(
+      dialog.showOpenDialog.bind(dialog),
+      configManager
+    )
+
+    // If a valid library path was selected for the first time, open the database.
+    if (!result.cancelled && result.path && !database) {
+      database = new KeePicDatabase(join(app.getPath('userData'), 'index.db'))
+      database.open()
+    }
+
+    return result
+  })
+
+  // --- Import IPC ---
+
+  ipcMain.handle('import:select-source-folder', () =>
+    handleSelectSourceFolder(dialog.showOpenDialog.bind(dialog))
+  )
+
+  ipcMain.handle('import:plan', async (event, { sourcePath }: { sourcePath: string }) => {
+    const libraryPath = configManager.get().libraryPath
+    if (!libraryPath) return { error: 'No library path configured' }
+    if (!database) return { error: 'Database not open' }
+
+    return handlePlan(
+      sourcePath,
+      libraryPath,
+      dbPath,
+      configManager.get(),
+      (progress) => event.sender.send('import:plan-progress', progress),
+      plannerWorkerPath
+    )
+  })
+
+  ipcMain.handle('import:execute', (event, { plan }: { plan: ImportPlan }) => {
+    const libraryPath = configManager.get().libraryPath
+    if (!libraryPath) return { error: 'No library path configured' }
+    if (!database) return { error: 'Database not open' }
+
+    return handleExecute(
+      plan,
+      libraryPath,
+      dbPath,
+      app.getPath('userData'),
+      configManager.get(),
+      (progress) => event.sender.send('import:progress', progress),
+      (result) => event.sender.send('import:complete', result),
+      importerWorkerRef,
+      importerWorkerPath
+    )
+  })
+
+  ipcMain.handle('import:cancel', () => handleCancel(importerWorkerRef))
+
+  // --- Google Auth IPC ---
+
+  ipcMain.handle('google:get-auth-status', () => handleGetAuthStatus())
+  ipcMain.handle('google:connect', () => handleConnect())
+  ipcMain.handle('google:disconnect', () => handleDisconnect())
+
+  // --- Google Photos Download IPC ---
+
+  ipcMain.handle('google:get-last-download-date', () => {
+    if (!database) return { date: null }
+    return handleGetLastDownloadDate(database)
+  })
+
+  ipcMain.handle('google:start-download', async (event, { startDate }: { startDate: string }) => {
+    const libraryPath = configManager.get().libraryPath
+    if (!libraryPath) return { error: 'No library path configured' }
+    if (!database) return { error: 'Database not open' }
+
+    return handleStartDownload(
+      startDate,
+      database,
+      dbPath,
+      app.getPath('userData'),
+      configManager.get(),
+      (progress) => event.sender.send('google:download-progress', progress),
+      (result) => event.sender.send('google:download-complete', result),
+      googleDownloadWorkerRef,
+      googleDownloadWorkerPath
+    )
+  })
+
+  ipcMain.handle('google:cancel-download', () => handleCancelDownload(googleDownloadWorkerRef))
+
+  ipcMain.handle('google:cleanup-download-dir', (_event, { dirPath }: { dirPath: string }) =>
+    handleCleanupDownloadDir(dirPath)
+  )
+
+  // --- Library stats IPC ---
+
+  ipcMain.handle('library:get-stats', () => {
+    if (!database) return null
+    return handleGetLibraryStats(database)
+  })
+
+  ipcMain.handle('library:scan-duplicates', () => {
+    if (!database) return []
+    return handleScanDuplicates(database)
+  })
+
+  // --- Library indexer IPC ---
+
+  ipcMain.handle('library:start-index', (event) => {
+    if (indexerWorker) {
+      return { alreadyRunning: true }
+    }
+
+    const libraryPath = configManager.get().libraryPath
+    if (!libraryPath) {
+      return { error: 'No library path configured' }
+    }
+
+    const indexerWorkerPath = join(__dirname, '../workers/indexer.worker.js')
+
+    indexerWorker = new Worker(indexerWorkerPath, {
+      workerData: { libraryPath, dbPath }
+    })
+
+    indexerWorker.on('message', (msg: { type: string }) => {
+      if (msg.type === 'progress') {
+        event.sender.send('library:index-progress', msg)
+      } else if (msg.type === 'complete' || msg.type === 'error') {
+        event.sender.send('library:index-complete', msg)
+        indexerWorker = null
+      }
+    })
+
+    indexerWorker.on('error', (err: Error) => {
+      event.sender.send('library:index-complete', { type: 'error', message: err.message })
+      indexerWorker = null
+    })
+
+    return { started: true }
+  })
+
   createWindow()
 
   app.on('activate', () => {

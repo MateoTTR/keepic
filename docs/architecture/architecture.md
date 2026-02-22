@@ -1,7 +1,8 @@
 # KeePic — Architecture Overview
 
-> **Status**: Draft v0.3 — 2026-02-21
+> **Status**: Draft v0.4 — 2026-02-21
 > **Changelog**:
+> - v0.4: UI framework closed → Svelte 5 + Tailwind CSS + shadcn-svelte (ADR-004). Tech stack updated to reflect implemented choices (Vitest, custom DCT pHash). Open questions updated.
 > - v0.3: Multi-user shared folder, append-only policy, per-instance local index, folder naming convention (YYYY/YYYY.MM/), event folders manual, year-based filtering. CI/CD + Git Flow added.
 > - v0.2: ADR-001 closed (Electron + TypeScript). App data separated from library folder. HEIC/Live Photo handling added. Browse feature deferred.
 > - v0.1: Initial draft.
@@ -44,15 +45,15 @@ The app is **append-only**: it never modifies or deletes files already in the sh
 | Desktop framework | Electron (latest stable) | HEIC support via `sharp`, TypeScript full-stack (see ADR-001) |
 | Build toolchain | `electron-vite` | Fast HMR, modern bundling |
 | Language | TypeScript (main + renderer + workers) | Single language |
-| UI framework | TBD (React or Svelte) | Decided in TASK-003 |
-| Image processing | `sharp` | HEIC read/write, JPEG conversion, thumbnails — cross-platform |
+| UI framework | Svelte 5 + Tailwind CSS + shadcn-svelte | Zero runtime overhead, minimal boilerplate (see ADR-004) |
+| Image processing | `sharp` | HEIC read/write, JPEG conversion — cross-platform |
 | EXIF reading | `exifreader` | Pure JS, comprehensive EXIF support |
-| Perceptual hashing | `imghash` or `blockhash` | Duplicate detection |
+| Perceptual hashing | Custom DCT pHash (64-bit) | Implemented in `src/main/phash.ts` — no external dependency |
 | SQLite | `better-sqlite3` | Synchronous, fast, Node.js main process |
 | OAuth / keychain | `keytar` | OS keychain on Windows + macOS |
 | Background workers | Node.js `worker_threads` | CPU-intensive tasks off the main thread |
 | Packaging | `electron-builder` | NSIS installer (Windows), DMG (macOS) |
-| Test framework | Jest or Vitest (TBD in TASK-003) | 100% coverage on non-frontend code |
+| Test framework | Vitest + `@vitest/coverage-v8` | 100% coverage on non-frontend code |
 | CI/CD | GitHub Actions | Lint, test, coverage gate, release builds |
 
 ---
@@ -208,6 +209,7 @@ Record import job in import_jobs (last imported date, count)
 | [ADR-001](adr/ADR-001-desktop-framework.md) | Desktop framework: Electron vs Tauri | **Accepted** | 2026-02-21 |
 | [ADR-002](adr/ADR-002-local-storage-strategy.md) | Local storage strategy | **Accepted** | 2026-02-21 |
 | [ADR-003](adr/ADR-003-google-photos-integration.md) | Google Photos API integration | Proposed | 2026-02-21 |
+| [ADR-004](adr/ADR-004-ui-framework.md) | UI framework: Svelte 5 + Tailwind CSS + shadcn-svelte | **Accepted** | 2026-02-21 |
 
 ---
 
@@ -233,8 +235,10 @@ Record import job in import_jobs (last imported date, count)
 
 ## 7. Open Architecture Questions
 
-- UI framework: React vs Svelte (TASK-003)
-- Test framework: Jest vs Vitest (TASK-003)
-- pHash library: `imghash` vs `blockhash` — benchmark needed
-- Temp folder cleanup: on app start, after each import, or both?
-- Re-index trigger: automatic on startup or manual only?
+| Question | Status | Resolution |
+|---|---|---|
+| UI framework: React vs Svelte | **Closed** | Svelte 5 + Tailwind CSS + shadcn-svelte (ADR-004) |
+| Test framework: Jest vs Vitest | **Closed** | Vitest + `@vitest/coverage-v8` |
+| pHash: external library vs custom | **Closed** | Custom DCT 64-bit implementation (`src/main/phash.ts`) |
+| Temp folder cleanup: on start vs after import | Open | — |
+| Re-index trigger: automatic on startup or manual only? | Open | — |

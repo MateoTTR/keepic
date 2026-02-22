@@ -29,22 +29,22 @@
 
 | # | Title | Status | Session |
 |---|---|---|---|
-| [TASK-004](TASK-004-database-schema.md) | Implement SQLite schema and migrations | `[ ]` | — |
-| [TASK-005](TASK-005-library-folder-init.md) | Implement library folder initialization and first-launch config | `[ ]` | — |
-| [TASK-006](TASK-006-library-indexer.md) | Implement library indexer (scan year folders, EXIF + pHash, upsert DB) | `[ ]` | — |
-| [TASK-007](TASK-007-exif-reader.md) | Implement EXIF reader and date extraction with fallback chain | `[ ]` | — |
-| [TASK-008](TASK-008-phash.md) | Implement perceptual hash (pHash) computation | `[ ]` | — |
-| [TASK-009](TASK-009-heic-handling.md) | Implement Live Photo detection and HEIC → JPEG conversion | `[ ]` | — |
+| [TASK-004](TASK-004-database-schema.md) | Implement SQLite schema and migrations | `[x]` | 2026-02-21-session-004 |
+| [TASK-005](TASK-005-library-folder-init.md) | Implement library folder initialization and first-launch config | `[x]` | 2026-02-21-session-005 |
+| [TASK-006](TASK-006-library-indexer.md) | Implement library indexer (scan year folders, EXIF + pHash, upsert DB) | `[x]` | 2026-02-21-session-006 |
+| [TASK-007](TASK-007-exif-reader.md) | Implement EXIF reader and date extraction with fallback chain | `[x]` | 2026-02-21-session-006 |
+| [TASK-008](TASK-008-phash.md) | Implement perceptual hash (pHash) computation | `[x]` | 2026-02-21-session-006 |
+| [TASK-009](TASK-009-heic-handling.md) | Implement Live Photo detection and HEIC → JPEG conversion | `[x]` | 2026-02-21-session-007 |
 
 ## Phase 2 — Import
 
 | # | Title | Status | Session |
 |---|---|---|---|
-| [TASK-010](TASK-010-import-local-folder.md) | Implement local folder / SD card import pipeline | `[ ]` | — |
-| [TASK-011](TASK-011-deduplication-ui.md) | Implement deduplication review UI | `[ ]` | — |
-| [TASK-012](TASK-012-google-photos-oauth.md) | Implement Google Photos OAuth 2.0 flow + keychain token storage | `[ ]` | — |
-| [TASK-013](TASK-013-google-photos-import.md) | Implement Google Photos media fetch, date filter, and download | `[ ]` | — |
-| [TASK-014](TASK-014-whatsapp-signal-import.md) | Implement WhatsApp / Signal folder import | `[ ]` | — |
+| [TASK-010](TASK-010-import-local-folder.md) | Implement local folder / SD card import pipeline | `[x]` | 2026-02-21-session-008 |
+| [TASK-011](TASK-011-deduplication-ui.md) | Implement deduplication review UI | `[x]` | 2026-02-22-session-009 |
+| [TASK-012](TASK-012-google-photos-oauth.md) | Implement Google Photos OAuth 2.0 flow + keychain token storage | `[x]` | 2026-02-22-session-010 |
+| [TASK-013](TASK-013-google-photos-import.md) | Implement Google Photos media fetch, date filter, and download | `[x]` | 2026-02-22-session-011 |
+| [TASK-014](TASK-014-whatsapp-signal-import.md) | Implement WhatsApp / Signal folder import | `[-]` | — |
 
 ## Phase 3 — Browsing UI
 
@@ -61,15 +61,15 @@
 
 | # | Title | Status | Session |
 |---|---|---|---|
-| [TASK-015](TASK-015-library-stats.md) | Implement library statistics view | `[ ]` | — |
-| [TASK-016](TASK-016-deduplication-scan.md) | Implement standalone deduplication scan on existing library | `[ ]` | — |
-| [TASK-017](TASK-017-reindex.md) | Implement manual re-index of library folder | `[ ]` | — |
+| [TASK-019](TASK-019-library-stats.md) | Implement library statistics view | `[x]` | 2026-02-22-session-012 |
+| [TASK-020](TASK-020-deduplication-scan.md) | Implement standalone deduplication scan on existing library | `[x]` | 2026-02-22-session-013 |
+| [TASK-021](TASK-021-reindex.md) | Implement manual re-index of library folder | `[x]` | 2026-02-22-session-014 |
 
 ## Phase 5 — Packaging & Distribution
 
 | # | Title | Status | Session |
 |---|---|---|---|
-| [TASK-018](TASK-018-packaging.md) | Configure electron-builder for Windows (NSIS) + macOS (DMG) releases | `[ ]` | — |
+| [TASK-022](TASK-022-packaging.md) | Configure electron-builder for Windows (NSIS) + macOS (DMG) releases | `[x]` | 2026-02-22-session-015 |
 
 ---
 

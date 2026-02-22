@@ -121,7 +121,7 @@ The entire stack will be TypeScript, enabling faster iteration for a solo develo
 | Framework | Electron (latest stable) |
 | Build toolchain | `electron-vite` |
 | Language | TypeScript throughout |
-| UI framework | TBD — React or Svelte (separate decision) |
+| UI framework | Svelte 5 + Tailwind CSS + shadcn-svelte (see ADR-004) |
 | Image processing | `sharp` (HEIC, JPEG conversion, thumbnails) |
 | EXIF reading | `exifreader` or `sharp` metadata |
 | Perceptual hashing | `imghash` or `blockhash` |
@@ -141,7 +141,7 @@ The entire stack will be TypeScript, enabling faster iteration for a solo develo
 - Must keep Electron updated for security patches
 
 ### Neutral
-- The UI framework (React vs Svelte) is a separate decision, to be made when scaffolding TASK-003
+- The UI framework was decided separately: Svelte 5 + Tailwind CSS + shadcn-svelte (see ADR-004)
 
 ---
 

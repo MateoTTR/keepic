@@ -42,6 +42,25 @@ export interface AppConfig {
   }
 }
 
+export interface SelectLibraryFolderResult {
+  cancelled: boolean
+  path?: string
+  error?: string
+}
+
+export interface IndexProgress {
+  total: number
+  processed: number
+  indexed: number
+  skipped: number
+}
+
+export interface IndexResult {
+  indexed: number
+  skipped: number
+  deleted: number
+}
+
 export interface ImportProgress {
   total: number
   processed: number
@@ -50,4 +69,87 @@ export interface ImportProgress {
   duplicates: number
   livePhotosDiscarded: number
   currentFile: string | null
+}
+
+export type ImportEntryStatus = 'ready' | 'duplicate' | 'collision' | 'error'
+
+export interface ImportPlanEntry {
+  sourcePath: string
+  destinationRelativePath: string
+  dateTaken: string
+  dateTakenSource: DateSource
+  phash: string | null
+  width: number | null
+  height: number | null
+  fileSize: number
+  status: ImportEntryStatus
+  duplicateOf?: string
+  originalDestination?: string
+  errorMessage?: string
+}
+
+export interface ImportPlan {
+  entries: ImportPlanEntry[]
+  livePhotosDiscarded: number
+  sourceFolder: string
+}
+
+export interface PlanProgress {
+  total: number
+  processed: number
+  currentFile: string | null
+}
+
+export interface ImportResult {
+  imported: number
+  skipped: number
+  livePhotosDiscarded: number
+  errors: Array<{ sourcePath: string; error: string }>
+  status: ImportStatus
+}
+
+export interface GoogleAuthStatus {
+  authenticated: boolean
+  email?: string
+}
+
+export interface GoogleDownloadProgress {
+  fetched: number // API items returned so far (across all pages)
+  downloaded: number // files written to disk
+  currentFile: string | null
+}
+
+export interface GoogleDownloadResult {
+  status: ImportStatus
+  downloaded: number
+  errors: Array<{ filename: string; error: string }>
+  downloadDir: string // absolute path to the staging folder
+}
+
+export interface DuplicatePhoto {
+  path: string
+  filename: string
+  fileSize: number | null
+  dateTaken: string | null
+  importedAt: string
+}
+
+export interface DuplicateGroup {
+  phash: string
+  photos: DuplicatePhoto[] // always 2+ items, sorted by importedAt ASC
+}
+
+export interface LibraryStats {
+  totalPhotos: number
+  totalSizeBytes: number
+  oldestDate: string | null // ISO date string (YYYY-MM-DD) or null if empty
+  newestDate: string | null // ISO date string (YYYY-MM-DD) or null if empty
+  photosByYear: Array<{ year: string; count: number }> // sorted ascending
+  recentImports: Array<{
+    // last 5 completed import_jobs, newest first
+    source: ImportSource
+    finishedAt: string // ISO 8601
+    photosImported: number
+    photosSkipped: number
+  }>
 }
