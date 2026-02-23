@@ -74,9 +74,9 @@ app.whenReady().then(() => {
   // Track the running Google Photos download worker.
   const googleDownloadWorkerRef: GoogleActiveWorkerRef = { value: null }
 
-  const plannerWorkerPath = join(__dirname, '../workers/planner.worker.js')
-  const importerWorkerPath = join(__dirname, '../workers/importer.worker.js')
-  const googleDownloadWorkerPath = join(__dirname, '../workers/google-photos-download.worker.js')
+  const plannerWorkerPath = join(__dirname, 'workers/planner.worker.js')
+  const importerWorkerPath = join(__dirname, 'workers/importer.worker.js')
+  const googleDownloadWorkerPath = join(__dirname, 'workers/google-photos-download.worker.js')
   const dbPath = join(app.getPath('userData'), 'index.db')
 
   // --- Config IPC ---
@@ -200,7 +200,7 @@ app.whenReady().then(() => {
       return { error: 'No library path configured' }
     }
 
-    const indexerWorkerPath = join(__dirname, '../workers/indexer.worker.js')
+    const indexerWorkerPath = join(__dirname, 'workers/indexer.worker.js')
 
     indexerWorker = new Worker(indexerWorkerPath, {
       workerData: { libraryPath, dbPath }
