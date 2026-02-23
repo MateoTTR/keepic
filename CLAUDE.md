@@ -81,6 +81,8 @@ The project follows the **Git Flow** branching model:
 4. The user reviews and merges the PR themselves; they will inform Claude once merged
 5. Squash-merge into `develop`
 
+> ⚠ **PRs must always target `develop`**, never `main`. Double-check the base branch in the `gh pr create` command. `main` is reserved for releases only.
+
 **Commit message format**: English, imperative mood (`Add`, `Fix`, `Update`...)
 
 ### Testing

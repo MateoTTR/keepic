@@ -71,10 +71,20 @@
 |---|---|---|---|
 | [TASK-022](TASK-022-packaging.md) | Configure electron-builder for Windows (NSIS) + macOS (DMG) releases | `[x]` | 2026-02-22-session-015 |
 
+## Phase 6 — Post-release bug fixes (v0.1.x)
+
+> Bugs and UX issues found during first manual testing session (2026-02-23).
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| [TASK-023](TASK-023-fix-workers-build.md) | Fix workers build config — workers never compiled, all core features broken | P0 | `[x]` | 2026-02-23-session-017 |
+| [TASK-024](TASK-024-fix-oauth-callback-crash.md) | Fix OAuth callback server crash on second browser request | P1 | `[x]` | 2026-02-23-session-017 |
+| [TASK-025](TASK-025-auto-index-on-library-setup.md) | Warn user to index library after first configuration | P2 | `[x]` | 2026-02-23-session-017 |
+
 ---
 
 ## Upcoming / Not Yet Planned
 
-- In-app browse/viewer (Phase 6 — deferred)
+- In-app browse/viewer (Phase 7 — deferred)
 - Event folder creation UI
 - Settings screen (currently embedded in first-launch flow)
