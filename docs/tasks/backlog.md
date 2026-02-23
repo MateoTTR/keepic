@@ -73,13 +73,15 @@
 
 ## Phase 6 — Post-release bug fixes (v0.1.x)
 
-> Bugs and UX issues found during first manual testing session (2026-02-23).
+> Bugs and UX issues found during manual testing sessions (2026-02-23).
 
 | # | Title | Priority | Status | Session |
 |---|---|---|---|---|
 | [TASK-023](TASK-023-fix-workers-build.md) | Fix workers build config — workers never compiled, all core features broken | P0 | `[x]` | 2026-02-23-session-017 |
 | [TASK-024](TASK-024-fix-oauth-callback-crash.md) | Fix OAuth callback server crash on second browser request | P1 | `[x]` | 2026-02-23-session-017 |
 | [TASK-025](TASK-025-auto-index-on-library-setup.md) | Warn user to index library after first configuration | P2 | `[x]` | 2026-02-23-session-017 |
+| [TASK-026](TASK-026-fix-import-execution-race-condition.md) | Fix import execution race condition (UI frozen on "Starting…") + cancel no-op | P0 | `[x]` | 2026-02-23-session-018 |
+| [TASK-027](TASK-027-fix-google-photos-403-scopes.md) | Fix Google Photos 403 insufficient scopes + improve error message | P1 | `[x]` | 2026-02-23-session-018 |
 
 ---
 
@@ -88,3 +90,15 @@
 - In-app browse/viewer (Phase 7 — deferred)
 - Event folder creation UI
 - Settings screen (currently embedded in first-launch flow)
+
+---
+
+## Backlog — Refactoring / Performance / Features
+
+> Items identified during session 018. No task file yet — to be planned when prioritised.
+
+| ID | Title | Type | Priority |
+|---|---|---|---|
+| REFACTOR-001 | Simplify HEIC pHash workflow — compute pHash directly on raw HEIC, remove temp conversion in planner | Refactor | P2 |
+| PERF-001 | Indexer concurrent processing — worker pool `os.cpus().length`, estimated ×4–8 speedup on multi-core machines | Perf | P3 |
+| FEAT-001 | Side-by-side duplicate comparison viewer with metadata and "Reveal in Explorer/Finder" | Feature | P4 |
