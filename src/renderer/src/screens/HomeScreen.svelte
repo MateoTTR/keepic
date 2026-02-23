@@ -73,6 +73,11 @@
       {#if libraryPath}
         <p class="text-sm text-gray-600 font-mono text-xs bg-gray-100 px-2 py-1 rounded break-all">{libraryPath}</p>
         <Button variant="outline" onclick={configureLibraryFolder}>Change…</Button>
+        {#if stats !== null && stats.totalPhotos === 0}
+          <div class="bg-amber-50 border border-amber-200 rounded p-3">
+            <p class="text-sm text-amber-700">Library not indexed yet. Click <strong>Re-index library</strong> below before importing to detect existing duplicates.</p>
+          </div>
+        {/if}
       {:else}
         <p class="text-sm text-amber-600 font-medium">No library folder configured. Select a folder before importing photos.</p>
         <Button onclick={configureLibraryFolder}>Configure library folder…</Button>
