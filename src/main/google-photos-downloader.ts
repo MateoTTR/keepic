@@ -130,8 +130,14 @@ export async function fetchMediaPage(
   })
 
   if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`Google Photos API error: ${response.status} ${text}`)
+    const body = await response.json().catch(() => ({})) as { error?: { status?: string } }
+    if (response.status === 403 && body.error?.status === 'PERMISSION_DENIED') {
+      throw new Error(
+        'Google Photos access was denied (insufficient scopes). ' +
+        'Please disconnect your account and reconnect to grant the required permissions.'
+      )
+    }
+    throw new Error(`Google Photos API error: ${response.status} ${JSON.stringify(body)}`)
   }
 
   const data = (await response.json()) as {
