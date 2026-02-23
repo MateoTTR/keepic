@@ -73,11 +73,20 @@ const keepicAPI = {
       ipcRenderer.on('import:progress', (_event, data) => callback(data))
     },
 
+    removeProgressListeners: (): void => {
+      ipcRenderer.removeAllListeners('import:progress')
+    },
+
     onComplete: (callback: (r: ImportResult) => void): void => {
       ipcRenderer.on('import:complete', (_event, data) => callback(data))
     },
 
-    cancel: (): Promise<void> => ipcRenderer.invoke('import:cancel')
+    removeCompleteListeners: (): void => {
+      ipcRenderer.removeAllListeners('import:complete')
+    },
+
+    cancel: (): Promise<{ cancelled: true } | { noWorker: true }> =>
+      ipcRenderer.invoke('import:cancel')
   },
   google: {
     getAuthStatus: (): Promise<GoogleAuthStatus> => ipcRenderer.invoke('google:get-auth-status'),
@@ -96,7 +105,8 @@ const keepicAPI = {
     ): Promise<{ started: true } | { alreadyRunning: true } | { error: string }> =>
       ipcRenderer.invoke('google:start-download', { startDate }),
 
-    cancelDownload: (): Promise<void> => ipcRenderer.invoke('google:cancel-download'),
+    cancelDownload: (): Promise<{ cancelled: true } | { noWorker: true }> =>
+      ipcRenderer.invoke('google:cancel-download'),
 
     onDownloadProgress: (callback: (p: GoogleDownloadProgress) => void): void => {
       ipcRenderer.on('google:download-progress', (_event, data) => callback(data))

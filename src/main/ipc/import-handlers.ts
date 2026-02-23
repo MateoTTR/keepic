@@ -170,7 +170,15 @@ export function handleExecute(
 /**
  * Requests cancellation of the running importer worker.
  * The worker checks the cancellation flag between files (cooperative).
+ * Returns { noWorker: true } if no worker is currently running, so the caller
+ * can synthesize a terminal state without waiting for a worker message.
  */
-export function handleCancel(activeWorkerRef: ActiveWorkerRef): void {
-  activeWorkerRef.value?.postMessage({ type: 'cancel' })
+export function handleCancel(
+  activeWorkerRef: ActiveWorkerRef
+): { cancelled: true } | { noWorker: true } {
+  if (activeWorkerRef.value === null) {
+    return { noWorker: true }
+  }
+  activeWorkerRef.value.postMessage({ type: 'cancel' })
+  return { cancelled: true }
 }
