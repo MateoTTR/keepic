@@ -66,7 +66,6 @@
     plan = modifiedPlan
     execProgress = null
     currentScreen = 'executing'
-    window.keepic.import.execute({ entries: plan, livePhotosDiscarded, sourceFolder })
   }
 
   function handleExecProgress(p: ImportProgress): void {
@@ -145,6 +144,7 @@
       />
     {:else if currentScreen === 'executing'}
       <ExecutionScreen
+        plan={{ entries: plan, livePhotosDiscarded, sourceFolder }}
         onProgress={handleExecProgress}
         onComplete={handleExecComplete}
       />

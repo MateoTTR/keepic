@@ -1,15 +1,16 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
-  import type { ImportProgress, ImportResult } from '../../../shared/types'
+  import { onMount, onDestroy } from 'svelte'
+  import type { ImportPlan, ImportProgress, ImportResult } from '../../../shared/types'
   import Button from '../components/ui/Button.svelte'
   import Progress from '../components/ui/Progress.svelte'
 
   interface Props {
+    plan: ImportPlan
     onProgress: (p: ImportProgress) => void
     onComplete: (r: ImportResult) => void
   }
 
-  let { onProgress, onComplete }: Props = $props()
+  let { plan, onProgress, onComplete }: Props = $props()
 
   let progress: ImportProgress | null = $state(null)
   let cancelling: boolean = $state(false)
@@ -22,11 +23,26 @@
     window.keepic.import.onComplete((r) => {
       onComplete(r)
     })
+    void window.keepic.import.execute(plan)
+  })
+
+  onDestroy(() => {
+    window.keepic.import.removeProgressListeners()
+    window.keepic.import.removeCompleteListeners()
   })
 
   async function cancel(): Promise<void> {
     cancelling = true
-    await window.keepic.import.cancel()
+    const result = await window.keepic.import.cancel()
+    if ('noWorker' in result && result.noWorker) {
+      onComplete({
+        imported: 0,
+        skipped: 0,
+        livePhotosDiscarded: plan.livePhotosDiscarded,
+        errors: [],
+        status: 'cancelled'
+      })
+    }
   }
 </script>
 

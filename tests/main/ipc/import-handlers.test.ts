@@ -340,20 +340,22 @@ describe('handleExecute', () => {
 // ---------------------------------------------------------------------------
 
 describe('handleCancel', () => {
-  it('sends cancel message to the active worker', () => {
+  it('sends cancel message to the active worker and returns { cancelled: true }', () => {
     const messages: unknown[] = []
     const fakeWorker = {
       postMessage: (msg: unknown) => messages.push(msg)
     } as unknown as Worker
 
     const ref: ActiveWorkerRef = { value: fakeWorker }
-    handleCancel(ref)
+    const result = handleCancel(ref)
 
     expect(messages).toEqual([{ type: 'cancel' }])
+    expect(result).toEqual({ cancelled: true })
   })
 
-  it('does nothing when no worker is active', () => {
+  it('returns { noWorker: true } when no worker is active', () => {
     const ref: ActiveWorkerRef = { value: null }
-    expect(() => handleCancel(ref)).not.toThrow()
+    const result = handleCancel(ref)
+    expect(result).toEqual({ noWorker: true })
   })
 })

@@ -584,17 +584,19 @@ describe('handleStartDownload', () => {
 // ---------------------------------------------------------------------------
 
 describe('handleCancelDownload', () => {
-  it('sends cancel message to the active worker', () => {
+  it('sends cancel message to the active worker and returns { cancelled: true }', () => {
     const postMessage = vi.fn()
     const activeWorkerRef: ActiveWorkerRef = { value: { postMessage } as never }
 
-    handleCancelDownload(activeWorkerRef)
+    const result = handleCancelDownload(activeWorkerRef)
 
     expect(postMessage).toHaveBeenCalledWith({ type: 'cancel' })
+    expect(result).toEqual({ cancelled: true })
   })
 
-  it('is a no-op when no worker is running', () => {
+  it('returns { noWorker: true } when no worker is running', () => {
     const activeWorkerRef: ActiveWorkerRef = { value: null }
-    expect(() => handleCancelDownload(activeWorkerRef)).not.toThrow()
+    const result = handleCancelDownload(activeWorkerRef)
+    expect(result).toEqual({ noWorker: true })
   })
 })
