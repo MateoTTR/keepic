@@ -136,7 +136,7 @@ export async function startCallbackServer(
   })
 
   const server = createServer((req, res) => {
-    const serverPort = (server.address() as { port: number }).port
+    const serverPort = req.socket.localPort!
     /* v8 ignore next */
     const url = new URL(req.url ?? '/', `http://127.0.0.1:${serverPort}`)
 
