@@ -160,6 +160,24 @@ describe('fetchMediaPage', () => {
       fetchMediaPage('tok', '2025-01-01', undefined, { fetch: mockFetch })
     ).rejects.toThrow('500')
   })
+
+  it('throws user-friendly message on 403 PERMISSION_DENIED', async () => {
+    const body = JSON.stringify({ error: { code: 403, message: 'Request had insufficient authentication scopes.', status: 'PERMISSION_DENIED' } })
+    const mockFetch = vi.fn(async () => new Response(body, { status: 403 }))
+
+    await expect(
+      fetchMediaPage('tok', '2025-01-01', undefined, { fetch: mockFetch })
+    ).rejects.toThrow('Google Photos access was denied (insufficient scopes). Please disconnect your account and reconnect to grant the required permissions.')
+  })
+
+  it('throws generic error message on 403 with non-PERMISSION_DENIED status', async () => {
+    const body = JSON.stringify({ error: { code: 403, status: 'FORBIDDEN' } })
+    const mockFetch = vi.fn(async () => new Response(body, { status: 403 }))
+
+    await expect(
+      fetchMediaPage('tok', '2025-01-01', undefined, { fetch: mockFetch })
+    ).rejects.toThrow('Google Photos API error: 403')
+  })
 })
 
 // ---------------------------------------------------------------------------
