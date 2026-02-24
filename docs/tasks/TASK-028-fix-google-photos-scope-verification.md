@@ -1,13 +1,13 @@
 # TASK-028 — Fix Google Photos scope verification at connect time
 
 ## Status
-Pending
+Complete
 
 ## Priority
 P1
 
 ## Session
-2026-02-24-session-019
+2026-02-24-session-020
 
 ---
 
