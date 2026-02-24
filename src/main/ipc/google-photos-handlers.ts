@@ -219,6 +219,18 @@ export async function handleStartDownload(
     })
   })
 
+  worker.on('exit', (code) => {
+    if (activeWorkerRef.value === worker) {
+      activeWorkerRef.value = null
+      onComplete({
+        status: 'failed',
+        downloaded: 0,
+        errors: [{ filename: '', error: `Worker exited unexpectedly (code ${code})` }],
+        downloadDir
+      })
+    }
+  })
+
   return { started: true }
 }
 

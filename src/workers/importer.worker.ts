@@ -29,8 +29,17 @@ parentPort!.on('message', (msg: { type: string }) => {
   if (msg.type === 'cancel') cancelled = true
 })
 
-const db = new KeePicDatabase(dbPath)
-db.open()
+let db: KeePicDatabase
+try {
+  db = new KeePicDatabase(dbPath)
+  db.open()
+} catch (err) {
+  parentPort!.postMessage({
+    type: 'error',
+    message: err instanceof Error ? err.message : String(err)
+  })
+  process.exit(1)
+}
 
 executeImportPlan(
   plan,

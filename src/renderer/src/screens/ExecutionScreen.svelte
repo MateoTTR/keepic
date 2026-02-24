@@ -15,7 +15,7 @@
   let progress: ImportProgress | null = $state(null)
   let cancelling: boolean = $state(false)
 
-  onMount(() => {
+  onMount(async () => {
     window.keepic.import.onProgress((p) => {
       progress = p
       onProgress(p)
@@ -23,7 +23,20 @@
     window.keepic.import.onComplete((r) => {
       onComplete(r)
     })
-    void window.keepic.import.execute(plan)
+
+    const result = await window.keepic.import.execute(plan).catch((err: Error) => ({
+      error: err.message
+    }))
+    if ('alreadyRunning' in result || 'error' in result) {
+      const msg = 'error' in result ? result.error : 'An import is already in progress.'
+      onComplete({
+        imported: 0,
+        skipped: 0,
+        livePhotosDiscarded: plan.livePhotosDiscarded,
+        errors: [{ sourcePath: '', error: msg }],
+        status: 'failed'
+      })
+    }
   })
 
   onDestroy(() => {

@@ -333,6 +333,101 @@ describe('handleExecute', () => {
     expect(completed[0].status).toBe('failed')
     expect(ref.value).toBeNull()
   })
+
+  it('calls onComplete with failed status when worker exits without sending any message', async () => {
+    const emitter = new EventEmitter() as unknown as Worker
+    ;(emitter as unknown as { postMessage: () => void }).postMessage = () => {}
+    // Worker exits without sending any message or error
+    setImmediate(() => emitter.emit('exit', 1))
+
+    const factory: WorkerFactory = () => emitter
+    const completed: { status: string; errors: { error: string }[] }[] = []
+    const ref: ActiveWorkerRef = { value: null }
+
+    handleExecute(
+      baseArgs.plan,
+      baseArgs.libraryPath,
+      baseArgs.dbPath,
+      baseArgs.userDataPath,
+      baseArgs.config,
+      () => {},
+      (r) => completed.push(r as { status: string; errors: { error: string }[] }),
+      ref,
+      baseArgs.importerWorkerPath,
+      factory
+    )
+
+    await new Promise((r) => setTimeout(r, 20))
+    expect(completed).toHaveLength(1)
+    expect(completed[0].status).toBe('failed')
+    expect(completed[0].errors[0].error).toContain('Worker exited unexpectedly')
+    expect(ref.value).toBeNull()
+  })
+
+  it('does NOT call onComplete twice when exit fires after complete', async () => {
+    const emitter = new EventEmitter() as unknown as Worker
+    ;(emitter as unknown as { postMessage: () => void }).postMessage = () => {}
+    setImmediate(() => {
+      emitter.emit('message', {
+        type: 'complete',
+        imported: 1,
+        skipped: 0,
+        livePhotosDiscarded: 0,
+        errors: [],
+        status: 'completed'
+      })
+      emitter.emit('exit', 0)
+    })
+
+    const factory: WorkerFactory = () => emitter
+    const completed: object[] = []
+    const ref: ActiveWorkerRef = { value: null }
+
+    handleExecute(
+      baseArgs.plan,
+      baseArgs.libraryPath,
+      baseArgs.dbPath,
+      baseArgs.userDataPath,
+      baseArgs.config,
+      () => {},
+      (r) => completed.push(r),
+      ref,
+      baseArgs.importerWorkerPath,
+      factory
+    )
+
+    await new Promise((r) => setTimeout(r, 20))
+    expect(completed).toHaveLength(1)
+  })
+
+  it('does NOT call onComplete twice when exit fires after error event', async () => {
+    const emitter = new EventEmitter() as unknown as Worker
+    ;(emitter as unknown as { postMessage: () => void }).postMessage = () => {}
+    setImmediate(() => {
+      emitter.emit('error', new Error('worker crashed'))
+      emitter.emit('exit', 1)
+    })
+
+    const factory: WorkerFactory = () => emitter
+    const completed: object[] = []
+    const ref: ActiveWorkerRef = { value: null }
+
+    handleExecute(
+      baseArgs.plan,
+      baseArgs.libraryPath,
+      baseArgs.dbPath,
+      baseArgs.userDataPath,
+      baseArgs.config,
+      () => {},
+      (r) => completed.push(r),
+      ref,
+      baseArgs.importerWorkerPath,
+      factory
+    )
+
+    await new Promise((r) => setTimeout(r, 20))
+    expect(completed).toHaveLength(1)
+  })
 })
 
 // ---------------------------------------------------------------------------

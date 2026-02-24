@@ -38,22 +38,60 @@ not at download time.
 
 ## Deliverables
 
-1. **`src/main/google-auth.ts`** — in `startOAuthFlow`, extend the `tokenData` type
-   with `scope?: string` and verify its presence after the token exchange:
-   ```typescript
-   if (!tokenData.scope?.includes('photoslibrary.readonly')) {
-     throw new Error(
-       'Google Photos Library access was not granted. ' +
-       'Please disconnect and reconnect, ensuring you approve the ' +
-       '"Access your Google Photos Library" permission when prompted.'
-     )
-   }
-   ```
-2. **Unit tests** — new cases in the `startOAuthFlow` test suite:
-   - Successful token exchange **with** `photoslibrary.readonly` in `scope` → success (nominal case, already tested)
-   - Successful token exchange **without** `photoslibrary.readonly` in `scope` → "not granted" error
-   - Successful token exchange **with no `scope` field** at all → "not granted" error
-3. **100% coverage** maintained
+### 1. `src/main/google-auth.ts` — Verify scopes after token exchange in `startOAuthFlow`
+
+Extend the `tokenData` type with `scope?: string` and verify using **full scope URL
+matching** (not substring) to avoid false positives:
+
+```typescript
+const grantedScopes = (tokenData.scope ?? '').split(' ')
+if (!grantedScopes.includes('https://www.googleapis.com/auth/photoslibrary.readonly')) {
+  throw new Error(
+    'Google Photos Library access was not granted. ' +
+    'Please disconnect and reconnect, ensuring you approve the ' +
+    '"Access your Google Photos Library" permission when prompted.'
+  )
+}
+```
+
+> **Why full URL instead of `includes('photoslibrary.readonly')`**: `String.includes()`
+> does substring matching on the space-separated scope string. If Google ever added a
+> scope like `photoslibrary.readonly.limited`, it would match incorrectly. Splitting on
+> spaces and using array `includes()` with the full URL is exact.
+
+### 2. `src/main/google-auth.ts` — Verify scopes on token refresh
+
+In the token refresh function (`refreshAccessToken` or equivalent), add the same scope
+check. Google can revoke individual scopes on a refresh token (user goes to Google Account
+→ Security → Third-party apps → removes Photos access). If the refresh response has a
+`scope` field and `photoslibrary.readonly` is absent:
+
+- Delete the stored tokens from keychain
+- Return an error that surfaces in the UI as "Google Photos access was revoked. Please
+  reconnect your account."
+
+This prevents the scenario where the initial connect succeeds but a later refresh silently
+loses the Photos scope, causing the same 403 at download time.
+
+### 3. Verify HTTP callback server cleanup on scope error
+
+When `startOAuthFlow` throws after the token exchange (scope missing), ensure the local
+HTTP callback server is properly closed and the browser is not left on a broken callback
+page. Check that the existing `finally` block (or equivalent cleanup) covers this path.
+
+### 4. Unit tests
+
+New cases in the `startOAuthFlow` test suite:
+- Successful token exchange **with** `photoslibrary.readonly` in `scope` → success (nominal, already tested — update to include `scope` in mock response)
+- Successful token exchange **without** `photoslibrary.readonly` in `scope` → "not granted" error
+- Successful token exchange **with no `scope` field** at all → "not granted" error
+- Scope field with a similar but different scope (e.g. `photoslibrary.readonly.limited`) → "not granted" error
+
+New cases in the token refresh test suite:
+- Refresh response with valid scope → success
+- Refresh response with missing `photoslibrary.readonly` → tokens deleted, error returned
+
+### 5. 100% coverage maintained
 
 ---
 

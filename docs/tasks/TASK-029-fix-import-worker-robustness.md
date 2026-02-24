@@ -136,10 +136,56 @@ Add a `.catch()` to handle IPC invoke rejections (main process error, etc.).
 - `importer.worker.ts` unit tests not affected (bootstrap excluded from coverage)
 - 100% coverage maintained on main-process modules
 
+## Additional deliverable (from code review)
+
+### 4. `src/main/ipc/google-photos-handlers.ts` — Add `worker.on('exit', ...)` to `handleStartDownload`
+
+The same vulnerability exists: if the Google Photos download worker exits without sending
+a message, `activeWorkerRef.value` remains stale. Apply the same pattern:
+
+```typescript
+worker.on('exit', (code) => {
+  if (activeWorkerRef.value === worker) {
+    activeWorkerRef.value = null
+    onComplete({
+      status: 'failed',
+      downloaded: 0,
+      errors: [{ filename: '', error: `Worker exited unexpectedly (code ${code})` }],
+      downloadDir
+    })
+  }
+})
+```
+
+### Additional tests for deliverable 4
+
+- `handleStartDownload` with a worker that exits without sending any message → `onComplete` called with `status: 'failed'`
+- `handleStartDownload` with a worker that exits AFTER sending 'complete' → `onComplete` **not** called twice
+- Worker exit handler: verify the ref is reset to null
+
+---
+
+## Code review notes
+
+### Double `onComplete` safety — validated
+
+The `activeWorkerRef.value === worker` guard in the `exit` handler is sufficient to prevent
+double calls. When `message`/`error` handlers fire first, they set `activeWorkerRef.value = null`,
+so the subsequent `exit` handler sees `null !== worker` and skips. Node.js guarantees `exit`
+is emitted after `error`/`message` (the thread must terminate before `exit` fires).
+
+### Most likely production trigger
+
+**Cause A (synchronous db.open() crash)** is the most likely trigger for the reported
+freeze, for three reasons:
+1. `better-sqlite3` native binding can fail on Windows with locked DB files or UNC paths (NAS)
+2. The symptom ("Starting… 0%") matches: crash before first progress message
+3. Causes B and C are safety nets for rare edge cases, not primary failure modes
+
+---
+
 ## Notes
 
-- The same `worker.on('exit', ...)` handler should be added in `google-photos-handlers.ts`
-  for `handleStartDownload` (same risk).
 - The Google Photos download worker has no synchronous `db.open()` → Cause A does not apply.
 - Cause C (ignored return value) does not affect Google Photos because `GoogleDownloadScreen`
   already handles the return value of `startDownload`.

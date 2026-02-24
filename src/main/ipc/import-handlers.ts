@@ -160,6 +160,19 @@ export function handleExecute(
     })
   })
 
+  worker.on('exit', (code) => {
+    if (activeWorkerRef.value === worker) {
+      activeWorkerRef.value = null
+      onComplete({
+        imported: 0,
+        skipped: 0,
+        livePhotosDiscarded: plan.livePhotosDiscarded,
+        errors: [{ sourcePath: '', error: `Worker exited unexpectedly (code ${code})` }],
+        status: 'failed'
+      })
+    }
+  })
+
   return { started: true }
 }
 
