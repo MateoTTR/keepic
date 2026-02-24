@@ -1,8 +1,9 @@
 # ADR-003 — Google Photos API Integration
 
-> **Status**: Accepted
+> **Status**: Superseded (see Amendment below)
 > **Date**: 2026-02-21
 > **Decided**: 2026-02-22
+> **Amended**: 2026-02-24 — Migration to Picker API
 > **Deciders**: Project owner
 
 ---
@@ -49,6 +50,10 @@ There are two approaches to OAuth 2.0 from a desktop app: the **loopback redirec
 - The API does not provide raw EXIF data — EXIF must be read from the downloaded file
 - Google may change or restrict the API (happened in 2019 when write scopes were heavily restricted)
 
+> **⚠ DEPRECATED (2026-02-24)**: The Library API `photoslibrary.readonly` scope was
+> deprecated by Google on March 31, 2025. All API calls using this scope now return
+> 403 PERMISSION_DENIED. See [Amendment](#amendment--migration-to-picker-api-2026-02-24) below.
+
 ---
 
 ### Option B — Google Takeout (manual export)
@@ -84,7 +89,7 @@ There are two approaches to OAuth 2.0 from a desktop app: the **loopback redirec
 
 ---
 
-## Decision
+## Original Decision (2026-02-22)
 
 **Option A — Official Google Photos Library API with loopback OAuth 2.0 + PKCE.**
 
@@ -97,7 +102,87 @@ for personal-use desktop apps and avoids requiring users to set up a Google Clou
 
 ---
 
+## Amendment — Migration to Picker API (2026-02-24)
+
+### Why the original decision is no longer viable
+
+Google deprecated the `photoslibrary.readonly`, `photoslibrary.sharing`, and `photoslibrary`
+scopes on **March 31, 2025**. All API calls relying on these scopes now return
+**403 PERMISSION_DENIED** ("Request had insufficient authentication scopes."). This is a
+platform-wide change affecting all third-party apps — confirmed across multiple tools
+(rclone, n8n, Make, custom apps).
+
+References:
+- [Updates to the Google Photos APIs](https://developers.google.com/photos/support/updates)
+- [Picker API launch and Library API changes](https://developers.googleblog.com/en/google-photos-picker-api-launch-and-library-api-updates/)
+
+### New decision
+
+**Migrate from the Library API to the Google Photos Picker API.**
+
+### Option D — Google Photos Picker API (new official API)
+
+**Description**: The [Picker API](https://developers.google.com/photos/picker/guides/get-started-picker)
+is Google's replacement for the Library API's read-access functionality. Instead of the app
+programmatically listing all photos, the user selects photos via a Google-hosted UI.
+
+**Flow**:
+1. App creates a Picker session via REST API → receives a `pickerUri`
+2. App opens the `pickerUri` in the user's browser (or embedded webview)
+3. User browses their Google Photos library, can search by date/keyword/location
+4. User selects photos (individually or by day) and confirms
+5. App polls the session until `mediaItemsSet` becomes true
+6. App retrieves selected media item metadata and downloads via `baseUrl`
+
+**Pros**:
+- Officially supported replacement API — no deprecation risk
+- No scope verification/approval burden (Picker manages consent implicitly)
+- User sees the native Google Photos browsing UI (familiar experience)
+- Selection by day is supported, making batch selection practical
+
+**Cons**:
+- No programmatic "download everything since date X" — user must select manually
+- Requires browser interaction for every import session
+- Significant refactoring of existing Google Photos code
+
+**Trade-off accepted**: The manual selection step is a downgrade from the fully automated
+Library API flow, but it is the only officially supported path for reading user photos.
+The ability to select entire days mitigates the friction for batch imports.
+
+### What stays the same
+
+- **OAuth 2.0 with loopback redirect** — the authentication mechanism is unchanged
+- **Two-phase pipeline** — Phase 1 (download to staging) → Phase 2 (local import) remains
+- **Token storage in OS keychain** — unchanged
+- **pHash deduplication** — unchanged
+
+### What changes
+
+| Aspect | Library API (old) | Picker API (new) |
+|---|---|---|
+| Scope | `photoslibrary.readonly` | Picker-specific (TBD during implementation) |
+| Photo listing | Programmatic `mediaItems:search` | User-driven selection in Google Photos UI |
+| Date filtering | API-level date range filter | User searches/browses by date in Picker UI |
+| Download worker | Paginated fetch + download loop | Fetch selected items from session + download |
+| UI in KeePic | Date picker → progress bar | "Open Google Photos" button → polling → progress bar |
+
+### Existing Library API code
+
+All code implementing the deprecated Library API (TASK-012, TASK-013, TASK-027, TASK-028)
+will be removed and replaced during the migration. This includes:
+- `src/main/google-photos-downloader.ts` — replaced with Picker session + download logic
+- `src/workers/google-photos-download.worker.ts` — replaced
+- `src/renderer/src/screens/GoogleDownloadScreen.svelte` — redesigned for Picker flow
+- `src/main/ipc/google-photos-handlers.ts` — partially rewritten
+- Scope verification in `src/main/google-auth.ts` — updated for new scope
+
+---
+
 ## Import Pipeline Architecture (decided in TASK-013)
+
+> **Note**: This section describes the original Library API architecture. The two-phase
+> structure (download → local import) is preserved in the Picker API migration, but
+> Phase 1 changes significantly. See Amendment above.
 
 The Google Photos import uses a **two-phase pipeline**, deliberately consistent with the existing
 local import flow:
@@ -138,13 +223,10 @@ via the date filter (`last_imported_date` recorded in `import_jobs`), not by goo
 
 ## OAuth Scope
 
-Request the minimum required scope:
+~~Request the minimum required scope:~~
+~~`https://www.googleapis.com/auth/photoslibrary.readonly`~~
 
-```
-https://www.googleapis.com/auth/photoslibrary.readonly
-```
-
-This grants read-only access to the user's media items and albums. No write access is needed.
+**Deprecated.** The new Picker API scope will be determined during TASK-031 implementation.
 
 ---
 
@@ -161,6 +243,10 @@ This grants read-only access to the user's media items and albums. No write acce
 ---
 
 ## Incremental Sync Strategy
+
+> **Note**: With the Picker API, date-based incremental sync is no longer programmatic.
+> The user selects which photos to import. KeePic still records import jobs and relies
+> on pHash deduplication to handle overlaps.
 
 ```
 On each Google Photos import:
@@ -193,6 +279,7 @@ date of the last downloaded photo. This avoids one-day overlaps on subsequent im
 - API quotas apply (not a concern for personal use at ~50k photos)
 - Downloaded staging folder can become orphaned if Phase 2 is cancelled (cleaned up on next reset)
 - `google_id` not stored — re-import same date range will re-download files (caught as dups by pHash)
+- **(New)** User must manually select photos in the Picker UI — no fully automated import
 
 ### Neutral
 - A fallback "import from Takeout folder" feature would complement this for bulk migrations
@@ -201,7 +288,10 @@ date of the last downloaded photo. This avoids one-day overlaps on subsequent im
 
 ## References
 
-- [Google Photos Library API — Overview](https://developers.google.com/photos/library/guides/overview)
+- [Google Photos Library API — Overview](https://developers.google.com/photos/library/guides/overview) *(deprecated)*
+- [Google Photos Picker API — Get Started](https://developers.google.com/photos/picker/guides/get-started-picker)
+- [Updates to the Google Photos APIs](https://developers.google.com/photos/support/updates)
+- [Picker API launch announcement](https://developers.googleblog.com/en/google-photos-picker-api-launch-and-library-api-updates/)
 - [OAuth 2.0 for Desktop Apps — Google](https://developers.google.com/identity/protocols/oauth2/native-app)
 - [keytar — OS keychain from Node.js](https://github.com/atom/node-keytar)
 - [Google Photos Takeout format](https://support.google.com/accounts/answer/3024190)

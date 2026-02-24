@@ -86,11 +86,25 @@
 | [TASK-029](TASK-029-fix-import-worker-robustness.md) | Fix import worker robustness (frozen "Starting…" persists after TASK-026) | P0 | `[x]` | 2026-02-24-session-020 |
 | [TASK-030](TASK-030-fix-structured-clone-import.md) | Fix structured clone error breaking local import ($state.snapshot) | P0 | `[x]` | 2026-02-24-session-021 |
 
+## Phase 7 — Google Photos Picker API Migration
+
+> Migration from the deprecated Library API to the new Picker API.
+> The `photoslibrary.readonly` scope was deprecated by Google on March 31, 2025.
+> See [ADR-003 Amendment](../architecture/adr/ADR-003-google-photos-integration.md#amendment--migration-to-picker-api-2026-02-24).
+
+| # | Title | Status | Session |
+|---|---|---|---|
+| [TASK-031](TASK-031-remove-deprecated-library-api.md) | Remove deprecated Library API code + update OAuth scope | `[ ]` | — |
+| [TASK-032](TASK-032-picker-session-backend.md) | Implement Picker API session management (create, poll, list items) | `[ ]` | — |
+| [TASK-033](TASK-033-picker-download-worker.md) | Implement Picker download worker (fetch selected items + download to staging) | `[ ]` | — |
+| [TASK-034](TASK-034-picker-ui.md) | Implement Picker UI flow (open browser, polling status, progress, handoff to local import) | `[ ]` | — |
+| [TASK-035](TASK-035-picker-integration-test.md) | End-to-end integration test + update error messages and user guidance | `[ ]` | — |
+
 ---
 
 ## Upcoming / Not Yet Planned
 
-- In-app browse/viewer (Phase 7 — deferred)
+- In-app browse/viewer (Phase 8 — deferred)
 - Event folder creation UI
 - Settings screen (currently embedded in first-launch flow)
 
