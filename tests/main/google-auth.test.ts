@@ -51,12 +51,15 @@ function makeIdToken(email: string): string {
   return `${header}.${payload}.fakesig`
 }
 
-function makeTokenResponse(email: string): object {
+function makeTokenResponse(email: string, scope?: string): object {
   return {
     access_token: 'access-token-123',
     refresh_token: 'refresh-token-456',
     expires_in: 3599,
-    id_token: makeIdToken(email)
+    id_token: makeIdToken(email),
+    scope:
+      scope ??
+      'openid email https://www.googleapis.com/auth/photoslibrary.readonly'
   }
 }
 
@@ -260,6 +263,64 @@ describe('startOAuthFlow', () => {
     }
     await expect(startOAuthFlow(deps)).rejects.toThrow('OAuth timeout')
   })
+
+  it('throws when photoslibrary.readonly is missing from granted scopes', async () => {
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore()
+    const deps: GoogleAuthDeps = {
+      credentials: validCredentials,
+      fetch: makeFetchOk(makeTokenResponse('user@gmail.com', 'openid email')),
+      openBrowser: makeBrowserMock(),
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    }
+    await expect(startOAuthFlow(deps)).rejects.toThrow(
+      'Google Photos Library access was not granted'
+    )
+    expect(keytarSet).not.toHaveBeenCalled()
+  })
+
+  it('throws when scope field is absent from token response', async () => {
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore()
+    const tokenResponseNoScope = {
+      access_token: 'at',
+      refresh_token: 'rt',
+      expires_in: 3599,
+      id_token: makeIdToken('user@gmail.com')
+      // no scope field
+    }
+    const deps: GoogleAuthDeps = {
+      credentials: validCredentials,
+      fetch: makeFetchOk(tokenResponseNoScope),
+      openBrowser: makeBrowserMock(),
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    }
+    await expect(startOAuthFlow(deps)).rejects.toThrow(
+      'Google Photos Library access was not granted'
+    )
+  })
+
+  it('throws when scope contains a similar but different scope (no false positive)', async () => {
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore()
+    const deps: GoogleAuthDeps = {
+      credentials: validCredentials,
+      fetch: makeFetchOk(
+        makeTokenResponse(
+          'user@gmail.com',
+          'openid email https://www.googleapis.com/auth/photoslibrary.readonly.limited'
+        )
+      ),
+      openBrowser: makeBrowserMock(),
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    }
+    await expect(startOAuthFlow(deps)).rejects.toThrow(
+      'Google Photos Library access was not granted'
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -400,6 +461,89 @@ describe('getValidAccessToken', () => {
     })
 
     expect(token).toBeNull()
+  })
+
+  it('returns token when refresh response includes valid scope', async () => {
+    const nearExpiryTokens: StoredTokens = {
+      ...baseTokens,
+      expiresAt: Date.now() + 2 * 60 * 1000
+    }
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore(
+      JSON.stringify(nearExpiryTokens)
+    )
+
+    const fetchMock = makeFetchOk({
+      access_token: 'new-access-token',
+      expires_in: 3600,
+      scope: 'openid email https://www.googleapis.com/auth/photoslibrary.readonly'
+    })
+
+    const token = await getValidAccessToken({
+      credentials: validCredentials,
+      fetch: fetchMock,
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    })
+
+    expect(token).toBe('new-access-token')
+    expect(keytarSet).toHaveBeenCalledOnce()
+    expect(keytarDelete).not.toHaveBeenCalled()
+  })
+
+  it('returns null and deletes tokens when refresh response has scope without photoslibrary', async () => {
+    const nearExpiryTokens: StoredTokens = {
+      ...baseTokens,
+      expiresAt: Date.now() + 2 * 60 * 1000
+    }
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore(
+      JSON.stringify(nearExpiryTokens)
+    )
+
+    const fetchMock = makeFetchOk({
+      access_token: 'new-access-token',
+      expires_in: 3600,
+      scope: 'openid email'
+    })
+
+    const token = await getValidAccessToken({
+      credentials: validCredentials,
+      fetch: fetchMock,
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    })
+
+    expect(token).toBeNull()
+    expect(keytarDelete).toHaveBeenCalledWith(KEYTAR_SERVICE, KEYTAR_ACCOUNT)
+    expect(keytarSet).not.toHaveBeenCalled()
+  })
+
+  it('accepts refresh response without scope field (does not reject)', async () => {
+    const nearExpiryTokens: StoredTokens = {
+      ...baseTokens,
+      expiresAt: Date.now() + 2 * 60 * 1000
+    }
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore(
+      JSON.stringify(nearExpiryTokens)
+    )
+
+    const fetchMock = makeFetchOk({
+      access_token: 'new-access-token',
+      expires_in: 3600
+      // no scope field — Google doesn't always include it on refresh
+    })
+
+    const token = await getValidAccessToken({
+      credentials: validCredentials,
+      fetch: fetchMock,
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    })
+
+    expect(token).toBe('new-access-token')
+    expect(keytarDelete).not.toHaveBeenCalled()
   })
 })
 
