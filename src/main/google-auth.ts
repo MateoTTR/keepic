@@ -233,6 +233,16 @@ export async function startOAuthFlow(deps?: GoogleAuthDeps): Promise<{ email: st
     refresh_token: string
     expires_in: number
     id_token: string
+    scope?: string
+  }
+
+  const grantedScopes = (tokenData.scope ?? '').split(' ')
+  if (!grantedScopes.includes('https://www.googleapis.com/auth/photoslibrary.readonly')) {
+    throw new Error(
+      'Google Photos Library access was not granted. ' +
+        'Please disconnect and reconnect, ensuring you approve the ' +
+        '"Access your Google Photos Library" permission when prompted.'
+    )
   }
 
   const email = extractEmailFromIdToken(tokenData.id_token)
@@ -275,6 +285,7 @@ export async function getValidAccessToken(deps?: GoogleAuthDeps): Promise<string
   const fetchFn = deps?.fetch ?? globalThis.fetch
   const keytarGet = deps?.keytarGet ?? defaultKeytarGet
   const keytarSet = deps?.keytarSet ?? defaultKeytarSet
+  const keytarDelete = deps?.keytarDelete ?? defaultKeytarDelete
 
   const raw = await keytarGet(KEYTAR_SERVICE, KEYTAR_ACCOUNT)
   if (!raw) return null
@@ -312,6 +323,16 @@ export async function getValidAccessToken(deps?: GoogleAuthDeps): Promise<string
   const refreshData = (await refreshResponse.json()) as {
     access_token: string
     expires_in: number
+    scope?: string
+  }
+
+  // If the refresh response includes a scope field, verify Photos access is still granted
+  if (refreshData.scope !== undefined) {
+    const grantedScopes = refreshData.scope.split(' ')
+    if (!grantedScopes.includes('https://www.googleapis.com/auth/photoslibrary.readonly')) {
+      await keytarDelete(KEYTAR_SERVICE, KEYTAR_ACCOUNT)
+      return null
+    }
   }
 
   const updatedTokens: StoredTokens = {

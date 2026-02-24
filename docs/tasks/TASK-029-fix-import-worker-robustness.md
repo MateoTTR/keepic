@@ -1,13 +1,13 @@
 # TASK-029 — Fix import worker robustness (frozen "Starting…" after TASK-026)
 
 ## Status
-Pending
+Complete
 
 ## Priority
 P0
 
 ## Session
-2026-02-24-session-019
+2026-02-24-session-020
 
 ---
 
