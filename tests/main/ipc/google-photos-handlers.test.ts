@@ -577,6 +577,128 @@ describe('handleStartDownload', () => {
       expect.objectContaining({ status: 'failed', downloaded: 0 })
     )
   })
+
+  it('calls onComplete with failed status when worker exits without sending any message', async () => {
+    const listeners: Record<string, Array<(...args: unknown[]) => void>> = {}
+    const workerMock = {
+      on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+        listeners[event] = listeners[event] ?? []
+        listeners[event].push(cb)
+      }),
+      postMessage: vi.fn()
+    }
+
+    const createWorker = vi.fn(() => workerMock as never)
+
+    await handleStartDownload(
+      '2025-01-01',
+      makeDb(),
+      '/db.db',
+      '/userData',
+      BASE_CONFIG,
+      onProgress,
+      onComplete,
+      activeWorkerRef,
+      '/worker.js',
+      {
+        getToken: async () => 'access-token',
+        keytarGet: async () => STORED_TOKENS,
+        createWorker
+      }
+    )
+
+    // Worker exits without sending any message
+    for (const cb of listeners['exit'] ?? []) cb(1)
+
+    expect(activeWorkerRef.value).toBeNull()
+    expect(onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        downloaded: 0,
+        errors: [{ filename: '', error: 'Worker exited unexpectedly (code 1)' }]
+      })
+    )
+  })
+
+  it('does NOT call onComplete twice when exit fires after complete', async () => {
+    const listeners: Record<string, Array<(...args: unknown[]) => void>> = {}
+    const workerMock = {
+      on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+        listeners[event] = listeners[event] ?? []
+        listeners[event].push(cb)
+      }),
+      postMessage: vi.fn()
+    }
+
+    const createWorker = vi.fn(() => workerMock as never)
+
+    await handleStartDownload(
+      '2025-01-01',
+      makeDb(),
+      '/db.db',
+      '/userData',
+      BASE_CONFIG,
+      onProgress,
+      onComplete,
+      activeWorkerRef,
+      '/worker.js',
+      {
+        getToken: async () => 'access-token',
+        keytarGet: async () => STORED_TOKENS,
+        createWorker
+      }
+    )
+
+    // Worker sends complete then exits
+    for (const cb of listeners['message'] ?? []) {
+      cb({
+        type: 'complete',
+        status: 'completed',
+        downloaded: 5,
+        errors: [],
+        downloadDir: '/dl'
+      })
+    }
+    for (const cb of listeners['exit'] ?? []) cb(0)
+
+    expect(onComplete).toHaveBeenCalledTimes(1)
+  })
+
+  it('does NOT call onComplete twice when exit fires after error event', async () => {
+    const listeners: Record<string, Array<(...args: unknown[]) => void>> = {}
+    const workerMock = {
+      on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+        listeners[event] = listeners[event] ?? []
+        listeners[event].push(cb)
+      }),
+      postMessage: vi.fn()
+    }
+
+    const createWorker = vi.fn(() => workerMock as never)
+
+    await handleStartDownload(
+      '2025-01-01',
+      makeDb(),
+      '/db.db',
+      '/userData',
+      BASE_CONFIG,
+      onProgress,
+      onComplete,
+      activeWorkerRef,
+      '/worker.js',
+      {
+        getToken: async () => 'access-token',
+        keytarGet: async () => STORED_TOKENS,
+        createWorker
+      }
+    )
+
+    // Worker emits error then exits
+    for (const cb of listeners['error'] ?? []) cb(new Error('crash'))
+    for (const cb of listeners['exit'] ?? []) cb(1)
+
+    expect(onComplete).toHaveBeenCalledTimes(1)
+  })
 })
 
 // ---------------------------------------------------------------------------
