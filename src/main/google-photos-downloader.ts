@@ -130,10 +130,11 @@ export async function fetchMediaPage(
   })
 
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { error?: { status?: string } }
+    const body = await response.json().catch(() => ({})) as { error?: { status?: string; message?: string } }
     if (response.status === 403 && body.error?.status === 'PERMISSION_DENIED') {
+      const detail = body.error.message ? ` (${body.error.message})` : ''
       throw new Error(
-        'Google Photos access was denied (insufficient scopes). ' +
+        `Google Photos access was denied${detail}. ` +
         'Please disconnect your account and reconnect to grant the required permissions.'
       )
     }

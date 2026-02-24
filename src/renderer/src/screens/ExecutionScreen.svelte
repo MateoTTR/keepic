@@ -24,7 +24,7 @@
       onComplete(r)
     })
 
-    const result = await window.keepic.import.execute(plan).catch((err: Error) => ({
+    const result = await window.keepic.import.execute($state.snapshot(plan)).catch((err: Error) => ({
       error: err.message
     }))
     if ('alreadyRunning' in result || 'error' in result) {
