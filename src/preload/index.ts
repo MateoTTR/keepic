@@ -99,7 +99,14 @@ const keepicAPI = {
       ipcRenderer.invoke('google:get-last-download-date'),
 
     cleanupDownloadDir: (dirPath: string): Promise<void> =>
-      ipcRenderer.invoke('google:cleanup-download-dir', { dirPath })
+      ipcRenderer.invoke('google:cleanup-download-dir', { dirPath }),
+
+    createPickerSession: (): Promise<
+      { sessionId: string; pickerUri: string } | { error: string }
+    > => ipcRenderer.invoke('google:create-picker-session'),
+
+    pollPickerSession: (sessionId: string): Promise<{ ready: boolean } | { error: string }> =>
+      ipcRenderer.invoke('google:poll-picker-session', { sessionId })
   }
 }
 
