@@ -3,6 +3,8 @@ import type {
   AppConfig,
   DuplicateGroup,
   GoogleAuthStatus,
+  GoogleDownloadProgress,
+  GoogleDownloadResult,
   ImportPlan,
   ImportProgress,
   ImportResult,
@@ -57,6 +59,13 @@ export interface KeePickAPI {
     cleanupDownloadDir: (dirPath: string) => Promise<void>
     createPickerSession: () => Promise<{ sessionId: string; pickerUri: string } | { error: string }>
     pollPickerSession: (sessionId: string) => Promise<{ ready: boolean } | { error: string }>
+    startPickerDownload: (
+      sessionId: string
+    ) => Promise<{ started: true } | { alreadyRunning: true } | { error: string }>
+    cancelPickerDownload: () => Promise<{ cancelled: true } | { noWorker: true }>
+    onPickerDownloadProgress: (callback: (p: GoogleDownloadProgress) => void) => void
+    onPickerDownloadComplete: (callback: (r: GoogleDownloadResult) => void) => void
+    removePickerDownloadListeners: () => void
   }
 }
 

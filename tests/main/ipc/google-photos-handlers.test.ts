@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
+import { EventEmitter } from 'events'
+import { Worker } from 'worker_threads'
 
 // Mock Electron and keytar — these cannot load in a Node test environment.
 vi.mock('electron', () => ({ shell: { openExternal: vi.fn() } }))
@@ -11,9 +13,16 @@ import {
   handleCleanupDownloadDir,
   handleCreatePickerSession,
   handlePollPickerSession,
-  type PickerHandlerDeps
+  spawnPickerDownloadWorker,
+  handleStartPickerDownload,
+  handleCancelPickerDownload,
+  type PickerHandlerDeps,
+  type ActivePickerWorkerRef,
+  type WorkerFactory
 } from '../../../src/main/ipc/google-photos-handlers'
 import { KeePicDatabase } from '../../../src/main/db/database'
+import type { DownloaderTokens } from '../../../src/main/google-photos-picker-downloader'
+import type { GoogleDownloadProgress, GoogleDownloadResult } from '../../../src/shared/types'
 
 // ---------------------------------------------------------------------------
 // DB helper
@@ -286,5 +295,392 @@ describe('handleCreatePickerSession — non-Error throw', () => {
     const result = await handleCreatePickerSession(deps)
 
     expect(result).toEqual({ error: '42' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Helpers for worker-based handler tests
+// ---------------------------------------------------------------------------
+
+const SAMPLE_TOKENS: DownloaderTokens = {
+  accessToken: 'access-tok',
+  refreshToken: 'refresh-tok',
+  expiresAt: Date.now() + 3_600_000,
+  credentials: { clientId: 'cid', clientSecret: 'csec' }
+}
+
+function makeFakeWorker(messages: object[]): Worker {
+  const emitter = new EventEmitter() as unknown as Worker
+  ;(emitter as unknown as { postMessage: (msg: unknown) => void }).postMessage = vi.fn()
+  setImmediate(() => {
+    for (const msg of messages) emitter.emit('message', msg)
+  })
+  return emitter
+}
+
+function makeWorkerFactory(messages: object[]): WorkerFactory {
+  return () => makeFakeWorker(messages)
+}
+
+// ---------------------------------------------------------------------------
+// spawnPickerDownloadWorker
+// ---------------------------------------------------------------------------
+
+describe('spawnPickerDownloadWorker', () => {
+  it('returns { started: true } and spawns the worker', () => {
+    const activeWorkerRef: ActivePickerWorkerRef = { value: null }
+    const factory = makeWorkerFactory([])
+
+    const result = spawnPickerDownloadWorker(
+      'session-1',
+      '/dl',
+      SAMPLE_TOKENS,
+      vi.fn(),
+      vi.fn(),
+      activeWorkerRef,
+      '/fake/worker.js',
+      { createWorker: factory }
+    )
+
+    expect(result).toEqual({ started: true })
+    expect(activeWorkerRef.value).not.toBeNull()
+  })
+
+  it('forwards progress messages to onProgress callback', async () => {
+    const activeWorkerRef: ActivePickerWorkerRef = { value: null }
+    const progressCb = vi.fn()
+    const completeCb = vi.fn()
+    const progress: GoogleDownloadProgress = { total: 5, downloaded: 2, currentFile: 'a.jpg' }
+    const factory = makeWorkerFactory([
+      { type: 'progress', ...progress },
+      { type: 'complete', status: 'completed', downloaded: 5, errors: [], downloadDir: '/dl' }
+    ])
+
+    spawnPickerDownloadWorker(
+      'session-1',
+      '/dl',
+      SAMPLE_TOKENS,
+      progressCb,
+      completeCb,
+      activeWorkerRef,
+      '/fake/worker.js',
+      { createWorker: factory }
+    )
+
+    await new Promise((r) => setImmediate(r))
+    await new Promise((r) => setImmediate(r))
+
+    expect(progressCb).toHaveBeenCalledWith(expect.objectContaining(progress))
+  })
+
+  it('calls onComplete and clears worker on complete message', async () => {
+    const activeWorkerRef: ActivePickerWorkerRef = { value: null }
+    const completeCb = vi.fn()
+    const completeResult: GoogleDownloadResult = {
+      status: 'completed',
+      downloaded: 3,
+      errors: [],
+      downloadDir: '/dl'
+    }
+    const factory = makeWorkerFactory([{ type: 'complete', ...completeResult }])
+
+    spawnPickerDownloadWorker(
+      'session-1',
+      '/dl',
+      SAMPLE_TOKENS,
+      vi.fn(),
+      completeCb,
+      activeWorkerRef,
+      '/fake/worker.js',
+      { createWorker: factory }
+    )
+
+    await new Promise((r) => setImmediate(r))
+    await new Promise((r) => setImmediate(r))
+
+    expect(completeCb).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'completed', downloaded: 3 })
+    )
+    expect(activeWorkerRef.value).toBeNull()
+  })
+
+  it('calls updateStoredAccessToken when complete message includes updatedAccessToken', async () => {
+    const activeWorkerRef: ActivePickerWorkerRef = { value: null }
+    const completeCb = vi.fn()
+    const completeMsg = {
+      type: 'complete',
+      status: 'completed',
+      downloaded: 2,
+      errors: [],
+      downloadDir: '/dl',
+      updatedAccessToken: 'new-access-tok',
+      updatedExpiresAt: Date.now() + 3_600_000
+    }
+    const factory = makeWorkerFactory([completeMsg])
+
+    // Provide authDeps with a keytarGet that returns stored tokens
+    // so updateStoredAccessToken can update them
+    const storedTokensJson = JSON.stringify({
+      accessToken: 'old-tok',
+      refreshToken: 'ref-tok',
+      email: 'u@t.com',
+      expiresAt: Date.now()
+    })
+    const mockKeytarGet = vi.fn(async () => storedTokensJson)
+    const mockKeytarSet = vi.fn()
+
+    spawnPickerDownloadWorker(
+      'session-1',
+      '/dl',
+      SAMPLE_TOKENS,
+      vi.fn(),
+      completeCb,
+      activeWorkerRef,
+      '/fake/worker.js',
+      {
+        createWorker: factory,
+        authDeps: {
+          credentials: { clientId: 'id', clientSecret: 'sec' },
+          keytarGet: mockKeytarGet,
+          keytarSet: mockKeytarSet,
+          keytarDelete: vi.fn()
+        }
+      }
+    )
+
+    await new Promise((r) => setImmediate(r))
+    await new Promise((r) => setImmediate(r))
+    // updateStoredAccessToken is called with void, so we wait a bit for the promise to resolve
+    await new Promise((r) => setImmediate(r))
+
+    expect(completeCb).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }))
+    expect(mockKeytarSet).toHaveBeenCalled()
+  })
+
+  it('calls onComplete with failed status on error message', async () => {
+    const activeWorkerRef: ActivePickerWorkerRef = { value: null }
+    const completeCb = vi.fn()
+    const factory = makeWorkerFactory([{ type: 'error', message: 'Worker crashed' }])
+
+    spawnPickerDownloadWorker(
+      'session-1',
+      '/dl',
+      SAMPLE_TOKENS,
+      vi.fn(),
+      completeCb,
+      activeWorkerRef,
+      '/fake/worker.js',
+      { createWorker: factory }
+    )
+
+    await new Promise((r) => setImmediate(r))
+    await new Promise((r) => setImmediate(r))
+
+    expect(completeCb).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        errors: [{ filename: '', error: 'Worker crashed' }]
+      })
+    )
+    expect(activeWorkerRef.value).toBeNull()
+  })
+
+  it('calls onComplete on worker error event', async () => {
+    const activeWorkerRef: ActivePickerWorkerRef = { value: null }
+    const completeCb = vi.fn()
+
+    const emitter = new EventEmitter() as unknown as Worker
+    ;(emitter as unknown as { postMessage: (msg: unknown) => void }).postMessage = vi.fn()
+    const factory: WorkerFactory = () => emitter
+
+    spawnPickerDownloadWorker(
+      'session-1',
+      '/dl',
+      SAMPLE_TOKENS,
+      vi.fn(),
+      completeCb,
+      activeWorkerRef,
+      '/fake/worker.js',
+      { createWorker: factory }
+    )
+
+    setImmediate(() => emitter.emit('error', new Error('Fatal error')))
+    await new Promise((r) => setImmediate(r))
+    await new Promise((r) => setImmediate(r))
+
+    expect(completeCb).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        errors: [{ filename: '', error: 'Fatal error' }]
+      })
+    )
+    expect(activeWorkerRef.value).toBeNull()
+  })
+
+  it('calls onComplete on worker exit event with non-zero code', async () => {
+    const activeWorkerRef: ActivePickerWorkerRef = { value: null }
+    const completeCb = vi.fn()
+
+    const emitter = new EventEmitter() as unknown as Worker
+    ;(emitter as unknown as { postMessage: (msg: unknown) => void }).postMessage = vi.fn()
+    const factory: WorkerFactory = () => emitter
+
+    spawnPickerDownloadWorker(
+      'session-1',
+      '/dl',
+      SAMPLE_TOKENS,
+      vi.fn(),
+      completeCb,
+      activeWorkerRef,
+      '/fake/worker.js',
+      { createWorker: factory }
+    )
+
+    // Store the reference before it gets cleared
+    const workerRef = activeWorkerRef.value
+
+    setImmediate(() => emitter.emit('exit', 1))
+    await new Promise((r) => setImmediate(r))
+    await new Promise((r) => setImmediate(r))
+
+    expect(completeCb).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        errors: [{ filename: '', error: 'Worker exited unexpectedly (code 1)' }]
+      })
+    )
+    expect(workerRef).toBe(emitter) // was correctly the same worker
+    expect(activeWorkerRef.value).toBeNull()
+  })
+
+  it('does not call onComplete on exit if worker ref already cleared', async () => {
+    const activeWorkerRef: ActivePickerWorkerRef = { value: null }
+    const completeCb = vi.fn()
+
+    const emitter = new EventEmitter() as unknown as Worker
+    ;(emitter as unknown as { postMessage: (msg: unknown) => void }).postMessage = vi.fn()
+    const factory: WorkerFactory = () => emitter
+
+    spawnPickerDownloadWorker(
+      'session-1',
+      '/dl',
+      SAMPLE_TOKENS,
+      vi.fn(),
+      completeCb,
+      activeWorkerRef,
+      '/fake/worker.js',
+      { createWorker: factory }
+    )
+
+    // Simulate that the worker was already cleared (e.g. 'complete' message arrived first)
+    activeWorkerRef.value = null
+
+    setImmediate(() => emitter.emit('exit', 0))
+    await new Promise((r) => setImmediate(r))
+    await new Promise((r) => setImmediate(r))
+
+    expect(completeCb).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// handleStartPickerDownload
+// ---------------------------------------------------------------------------
+
+describe('handleStartPickerDownload', () => {
+  it('returns alreadyRunning when a worker is already active', async () => {
+    const activeWorkerRef: ActivePickerWorkerRef = { value: {} as Worker }
+
+    const result = await handleStartPickerDownload(
+      'session-1',
+      '/dl',
+      vi.fn(),
+      vi.fn(),
+      activeWorkerRef,
+      '/fake/worker.js',
+      { getTokens: async () => SAMPLE_TOKENS }
+    )
+
+    expect(result).toEqual({ alreadyRunning: true })
+  })
+
+  it('returns error when getTokens returns null (not authenticated)', async () => {
+    const activeWorkerRef: ActivePickerWorkerRef = { value: null }
+
+    const result = await handleStartPickerDownload(
+      'session-1',
+      '/dl',
+      vi.fn(),
+      vi.fn(),
+      activeWorkerRef,
+      '/fake/worker.js',
+      { getTokens: async () => null }
+    )
+
+    expect(result).toEqual({ error: 'Not authenticated — please connect to Google Photos first' })
+  })
+
+  it('returns { started: true } and spawns worker when authenticated', async () => {
+    const activeWorkerRef: ActivePickerWorkerRef = { value: null }
+    const factory = makeWorkerFactory([])
+
+    const result = await handleStartPickerDownload(
+      'session-1',
+      '/dl',
+      vi.fn(),
+      vi.fn(),
+      activeWorkerRef,
+      '/fake/worker.js',
+      { getTokens: async () => SAMPLE_TOKENS, createWorker: factory }
+    )
+
+    expect(result).toEqual({ started: true })
+    expect(activeWorkerRef.value).not.toBeNull()
+  })
+
+  it('uses getStoredTokensForDownload by default when getTokens dep is not provided', async () => {
+    // keytar returns null → not authenticated → returns error
+    const activeWorkerRef: ActivePickerWorkerRef = { value: null }
+
+    const result = await handleStartPickerDownload(
+      'session-1',
+      '/dl',
+      vi.fn(),
+      vi.fn(),
+      activeWorkerRef,
+      '/fake/worker.js',
+      {
+        authDeps: {
+          credentials: { clientId: 'id', clientSecret: 'secret' },
+          keytarGet: vi.fn(async () => null),
+          keytarSet: vi.fn(),
+          keytarDelete: vi.fn()
+        }
+      }
+    )
+
+    expect(result).toEqual({ error: 'Not authenticated — please connect to Google Photos first' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// handleCancelPickerDownload
+// ---------------------------------------------------------------------------
+
+describe('handleCancelPickerDownload', () => {
+  it('returns { noWorker: true } when no active worker', () => {
+    const ref: ActivePickerWorkerRef = { value: null }
+    expect(handleCancelPickerDownload(ref)).toEqual({ noWorker: true })
+  })
+
+  it('sends cancel message and returns { cancelled: true }', () => {
+    const mockPostMessage = vi.fn()
+    const fakeWorker = { postMessage: mockPostMessage } as unknown as Worker
+    const ref: ActivePickerWorkerRef = { value: fakeWorker }
+
+    const result = handleCancelPickerDownload(ref)
+
+    expect(result).toEqual({ cancelled: true })
+    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'cancel' })
   })
 })

@@ -19,7 +19,10 @@ import {
   handleGetLastDownloadDate,
   handleCleanupDownloadDir,
   handleCreatePickerSession,
-  handlePollPickerSession
+  handlePollPickerSession,
+  handleStartPickerDownload,
+  handleCancelPickerDownload,
+  type ActivePickerWorkerRef
 } from './ipc/google-photos-handlers'
 import type { ImportPlan } from '../shared/types'
 
@@ -70,8 +73,12 @@ app.whenReady().then(() => {
   // Track the running importer worker (Phase 2) to prevent concurrent imports.
   const importerWorkerRef: ActiveWorkerRef = { value: null }
 
+  // Track the running Picker download worker.
+  const pickerWorkerRef: ActivePickerWorkerRef = { value: null }
+
   const plannerWorkerPath = join(__dirname, 'workers/planner.worker.js')
   const importerWorkerPath = join(__dirname, 'workers/importer.worker.js')
+  const pickerWorkerPath = join(__dirname, 'workers/google-photos-picker.worker.js')
   const dbPath = join(app.getPath('userData'), 'index.db')
 
   // --- Config IPC ---
@@ -156,6 +163,20 @@ app.whenReady().then(() => {
   ipcMain.handle('google:poll-picker-session', (_event, { sessionId }: { sessionId: string }) =>
     handlePollPickerSession(sessionId)
   )
+
+  ipcMain.handle('google:start-picker-download', (event, { sessionId }: { sessionId: string }) => {
+    const downloadDir = join(app.getPath('userData'), 'picker-staging', `${Date.now()}`)
+    return handleStartPickerDownload(
+      sessionId,
+      downloadDir,
+      (progress) => event.sender.send('google:picker-download-progress', progress),
+      (result) => event.sender.send('google:picker-download-complete', result),
+      pickerWorkerRef,
+      pickerWorkerPath
+    )
+  })
+
+  ipcMain.handle('google:cancel-picker-download', () => handleCancelPickerDownload(pickerWorkerRef))
 
   // --- Library stats IPC ---
 

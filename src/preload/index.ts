@@ -4,6 +4,8 @@ import type {
   AppConfig,
   DuplicateGroup,
   GoogleAuthStatus,
+  GoogleDownloadProgress,
+  GoogleDownloadResult,
   ImportPlan,
   ImportProgress,
   ImportResult,
@@ -106,7 +108,28 @@ const keepicAPI = {
     > => ipcRenderer.invoke('google:create-picker-session'),
 
     pollPickerSession: (sessionId: string): Promise<{ ready: boolean } | { error: string }> =>
-      ipcRenderer.invoke('google:poll-picker-session', { sessionId })
+      ipcRenderer.invoke('google:poll-picker-session', { sessionId }),
+
+    startPickerDownload: (
+      sessionId: string
+    ): Promise<{ started: true } | { alreadyRunning: true } | { error: string }> =>
+      ipcRenderer.invoke('google:start-picker-download', { sessionId }),
+
+    cancelPickerDownload: (): Promise<{ cancelled: true } | { noWorker: true }> =>
+      ipcRenderer.invoke('google:cancel-picker-download'),
+
+    onPickerDownloadProgress: (callback: (p: GoogleDownloadProgress) => void): void => {
+      ipcRenderer.on('google:picker-download-progress', (_event, data) => callback(data))
+    },
+
+    onPickerDownloadComplete: (callback: (r: GoogleDownloadResult) => void): void => {
+      ipcRenderer.on('google:picker-download-complete', (_event, data) => callback(data))
+    },
+
+    removePickerDownloadListeners: (): void => {
+      ipcRenderer.removeAllListeners('google:picker-download-progress')
+      ipcRenderer.removeAllListeners('google:picker-download-complete')
+    }
   }
 }
 
