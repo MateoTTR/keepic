@@ -74,9 +74,11 @@ KeePic utilise l'API officielle Google Photos via OAuth 2.0. Comme l'application
 
 3. Un navigateur s'ouvre avec la page d'autorisation Google. Vous verrez peut-être un avertissement *"Cette application n'est pas vérifiée"* — c'est normal pour une app en mode test. Cliquer sur *Paramètres avancés → Accéder à KeePic (non sécurisé)*.
 
-4. Autoriser l'accès en lecture à vos photos. L'autorisation est enregistrée dans le trousseau de votre OS (Windows Credential Manager / Trousseau macOS) — vous n'aurez pas à vous reconnecter.
+4. Autoriser l'accès à vos photos. L'autorisation est enregistrée dans le trousseau de votre OS (Windows Credential Manager / Trousseau macOS) — vous n'aurez pas à vous reconnecter.
 
-> **Confidentialité** : KeePic demande uniquement l'accès en lecture seule à vos photos (`photoslibrary.readonly`). Aucune photo n'est uploadée. Aucune donnée n'est envoyée à un serveur externe.
+5. Pour importer des photos, cliquer sur **Open Google Photos Picker** dans l'onglet Google Photos. Un onglet s'ouvre dans votre navigateur : sélectionnez les photos souhaitées (par jour si nécessaire), puis cliquez **Done**. KeePic détecte automatiquement votre sélection et lance le téléchargement.
+
+> **Confidentialité** : KeePic utilise l'API Picker de Google Photos (`photospicker.mediaitems.readonly`) — une permission de lecture restreinte qui ne donne accès qu'aux photos que vous sélectionnez explicitement. Aucune photo n'est uploadée. Aucune donnée n'est envoyée à un serveur externe.
 
 ---
 

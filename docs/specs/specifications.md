@@ -102,13 +102,28 @@ Before placing a photo in the library, the app verifies:
 2. **Destination safety**: the target path (`YYYY/YYYY.MM/filename`) is computed deterministically from the photo's capture date; no existing file is ever overwritten without confirmation
 
 #### 2.4.2 Import from Google Photos
-- Each user independently authenticates with their own Google account via **OAuth 2.0**
-- The user specifies a **start date**: only photos taken on or after that date are fetched (filter on `creationTime`)
-  - This handles the migration case: older photos are already organized locally
-- The app **remembers the last import**: on subsequent imports, the start date is pre-filled with the date of the most recently imported photo. The user can adjust it before confirming.
-- On re-import: photos whose `google_id` is already in the local index are automatically skipped
-- Photos are downloaded to `temp/` (OS app data), then moved to the monthly folder after validation
-- **Out of scope**: uploading to Google Photos, two-way sync
+
+> **Implementation note**: KeePic uses the **Google Photos Picker API** (not the deprecated Library API). The `photoslibrary.readonly` scope was removed by Google on March 31, 2025. The Picker API (`photospicker.mediaitems.readonly`) is the only officially supported path for reading user photos in third-party apps.
+
+**Authentication**:
+- Each user independently authenticates with their own Google account via **OAuth 2.0 + PKCE** (loopback redirect)
+- Tokens are stored in the OS keychain (Windows Credential Manager / macOS Keychain)
+- The app verifies at connect time that the `photospicker.mediaitems.readonly` scope was granted
+
+**Picker-based import flow**:
+1. The user clicks "Open Google Photos Picker" — KeePic creates a Picker session and opens the Google Photos Picker UI in the default browser
+2. The user browses their Google Photos library and selects photos (selection can be done by day)
+3. The user clicks "Done" in the Picker UI — KeePic detects the confirmed selection by polling every 3 seconds (timeout: 5 minutes)
+4. KeePic downloads the selected photos to `temp/` (OS app data staging folder)
+5. The downloaded folder is handed off to the local import pipeline: plan → deduplication review → execute → library write
+
+**Download details**:
+- Photos are downloaded at original quality (using `baseUrl=d` parameter)
+- Filename collisions in the staging folder are resolved with `_N` suffixes
+- The access token is refreshed automatically during long downloads
+- Individual file errors are recorded but do not abort the overall download
+
+**Out of scope**: uploading to Google Photos, two-way sync, programmatic library access
 
 #### 2.4.3 Import from SD Card / Camera
 - The user selects a source folder or removable drive
