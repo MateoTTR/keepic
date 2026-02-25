@@ -85,7 +85,7 @@
 | [TASK-028](TASK-028-fix-google-photos-scope-verification.md) | Fix Google Photos scope verification at connect time | P1 | `[x]` | 2026-02-24-session-020 |
 | [TASK-029](TASK-029-fix-import-worker-robustness.md) | Fix import worker robustness (frozen "Starting…" persists after TASK-026) | P0 | `[x]` | 2026-02-24-session-020 |
 | [TASK-030](TASK-030-fix-structured-clone-import.md) | Fix structured clone error breaking local import ($state.snapshot) | P0 | `[x]` | 2026-02-24-session-021 |
-| [TASK-036](TASK-036-fix-heic-import-decoding.md) | Fix HEIC import decoding failure — sharp/libheif plugin not loading | P0 | `[ ]` | — |
+| [TASK-036](TASK-036-fix-heic-import-decoding.md) | Fix HEIC import decoding failure — sharp/libheif plugin not loading | P0 | `[x]` | 2026-02-25-session-022 |
 
 ## Phase 7 — Google Photos Picker API Migration
 
