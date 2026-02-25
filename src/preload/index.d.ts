@@ -55,6 +55,8 @@ export interface KeePickAPI {
     disconnect: () => Promise<{ success: true } | { error: string }>
     getLastDownloadDate: () => Promise<{ date: string | null }>
     cleanupDownloadDir: (dirPath: string) => Promise<void>
+    createPickerSession: () => Promise<{ sessionId: string; pickerUri: string } | { error: string }>
+    pollPickerSession: (sessionId: string) => Promise<{ ready: boolean } | { error: string }>
   }
 }
 

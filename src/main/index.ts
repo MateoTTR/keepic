@@ -17,7 +17,9 @@ import { handleGetLibraryStats } from './ipc/library-stats-handler'
 import { handleScanDuplicates } from './ipc/dedup-scan-handler'
 import {
   handleGetLastDownloadDate,
-  handleCleanupDownloadDir
+  handleCleanupDownloadDir,
+  handleCreatePickerSession,
+  handlePollPickerSession
 } from './ipc/google-photos-handlers'
 import type { ImportPlan } from '../shared/types'
 
@@ -147,6 +149,12 @@ app.whenReady().then(() => {
 
   ipcMain.handle('google:cleanup-download-dir', (_event, { dirPath }: { dirPath: string }) =>
     handleCleanupDownloadDir(dirPath)
+  )
+
+  ipcMain.handle('google:create-picker-session', () => handleCreatePickerSession())
+
+  ipcMain.handle('google:poll-picker-session', (_event, { sessionId }: { sessionId: string }) =>
+    handlePollPickerSession(sessionId)
   )
 
   // --- Library stats IPC ---

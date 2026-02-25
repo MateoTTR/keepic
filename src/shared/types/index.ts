@@ -120,6 +120,24 @@ export interface GoogleDownloadResult {
   downloadDir: string // absolute path to the staging folder
 }
 
+export interface PickerMediaItem {
+  id: string
+  baseUrl: string
+  mimeType: string
+  filename: string
+  mediaMetadata: {
+    creationTime: string
+    width: string
+    height: string
+  }
+}
+
+export interface PickerSession {
+  id: string
+  pickerUri: string
+  mediaItemsSet: boolean
+}
+
 export interface DuplicatePhoto {
   path: string
   filename: string
