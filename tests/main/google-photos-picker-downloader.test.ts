@@ -222,7 +222,7 @@ describe('downloadPickerPhotos', () => {
   function makeDownloadFetch(itemData: Buffer = Buffer.from('img-data')) {
     return vi.fn(async (url: string) => {
       if (url.endsWith('=d')) {
-        return new Response(itemData, { status: 200 })
+        return new Response(new Uint8Array(itemData), { status: 200 })
       }
       // Refresh token endpoint
       return new Response(JSON.stringify({ access_token: 'refreshed-token', expires_in: 3600 }), {
