@@ -224,16 +224,16 @@ describe('listPickerMediaItems', () => {
   it('throws "Token expired" on 401', async () => {
     const deps = mockFetch(401, {})
 
-    await expect(
-      listPickerMediaItems('session-abc', 'bad-token', undefined, deps)
-    ).rejects.toThrow('Token expired')
+    await expect(listPickerMediaItems('session-abc', 'bad-token', undefined, deps)).rejects.toThrow(
+      'Token expired'
+    )
   })
 
   it('throws with status on other errors', async () => {
     const deps = mockFetch(404, { error: { message: 'Not found' } })
 
-    await expect(
-      listPickerMediaItems('session-abc', 'token', undefined, deps)
-    ).rejects.toThrow('Failed to list picker media items: 404')
+    await expect(listPickerMediaItems('session-abc', 'token', undefined, deps)).rejects.toThrow(
+      'Failed to list picker media items: 404'
+    )
   })
 })

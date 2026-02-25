@@ -114,9 +114,6 @@ describe('handleCleanupDownloadDir', () => {
 // Helpers for Picker handler tests
 // ---------------------------------------------------------------------------
 
-const KEYTAR_SERVICE = 'com.keepic.app'
-const KEYTAR_ACCOUNT = 'google-tokens'
-
 function makeStoredTokens(overrides?: Partial<{ expiresAt: number }>): string {
   return JSON.stringify({
     accessToken: 'valid-access-token',
