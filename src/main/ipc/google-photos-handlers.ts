@@ -1,7 +1,15 @@
 import { rmSync } from 'fs'
+import { Worker } from 'worker_threads'
 import type { KeePicDatabase } from '../db/database'
-import { getValidAccessToken, type GoogleAuthDeps } from '../google-auth'
+import {
+  getValidAccessToken,
+  getStoredTokensForDownload,
+  updateStoredAccessToken,
+  type GoogleAuthDeps
+} from '../google-auth'
 import { createPickerSession, pollPickerSession, type PickerDeps } from '../google-photos-picker'
+import type { DownloaderTokens } from '../google-photos-picker-downloader'
+import type { GoogleDownloadProgress, GoogleDownloadResult } from '../../shared/types'
 
 // ---------------------------------------------------------------------------
 // handleGetLastDownloadDate
@@ -72,6 +80,155 @@ export async function handlePollPickerSession(
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }
+}
+
+// ---------------------------------------------------------------------------
+// handleStartPickerDownload / handleCancelPickerDownload
+// ---------------------------------------------------------------------------
+
+export interface ActivePickerWorkerRef {
+  value: Worker | null
+}
+
+export type WorkerFactory = (
+  scriptPath: string,
+  options: { workerData: Record<string, unknown> }
+) => Worker
+
+/* v8 ignore next 2 */
+export const defaultWorkerFactory: WorkerFactory = (scriptPath, options) =>
+  new Worker(scriptPath, options)
+
+export interface StartPickerDownloadDeps {
+  authDeps?: GoogleAuthDeps
+  createWorker?: WorkerFactory
+  /** Injectable for testing: returns tokens without hitting keytar */
+  getTokens?: () => Promise<DownloaderTokens | null>
+}
+
+/**
+ * Spawns the Picker download worker (synchronous inner logic, takes pre-fetched tokens).
+ * Exported for unit testing. Use handleStartPickerDownload for the full async flow.
+ */
+export function spawnPickerDownloadWorker(
+  sessionId: string,
+  downloadDir: string,
+  tokens: DownloaderTokens,
+  onProgress: (p: GoogleDownloadProgress) => void,
+  onComplete: (r: GoogleDownloadResult) => void,
+  activeWorkerRef: ActivePickerWorkerRef,
+  workerPath: string,
+  deps?: StartPickerDownloadDeps
+): { started: true } {
+  /* v8 ignore next */
+  const createWorker = deps?.createWorker ?? defaultWorkerFactory
+
+  const worker = createWorker(workerPath, {
+    workerData: { sessionId, tokens, downloadDir }
+  })
+
+  activeWorkerRef.value = worker
+
+  worker.on('message', (msg: { type: string } & Record<string, unknown>) => {
+    if (msg.type === 'progress') {
+      onProgress(msg as unknown as GoogleDownloadProgress)
+    } else if (msg.type === 'complete') {
+      activeWorkerRef.value = null
+      const result = msg as unknown as GoogleDownloadResult & {
+        updatedAccessToken?: string
+        updatedExpiresAt?: number
+      }
+      if (result.updatedAccessToken && result.updatedExpiresAt) {
+        void updateStoredAccessToken(
+          result.updatedAccessToken,
+          result.updatedExpiresAt,
+          deps?.authDeps
+        )
+      }
+      onComplete(result)
+    } else if (msg.type === 'error') {
+      activeWorkerRef.value = null
+      onComplete({
+        downloaded: 0,
+        errors: [{ filename: '', error: msg.message as string }],
+        status: 'failed',
+        downloadDir
+      })
+    }
+  })
+
+  worker.on('error', (err: Error) => {
+    activeWorkerRef.value = null
+    onComplete({
+      downloaded: 0,
+      errors: [{ filename: '', error: err.message }],
+      status: 'failed',
+      downloadDir
+    })
+  })
+
+  worker.on('exit', (code) => {
+    if (activeWorkerRef.value === worker) {
+      activeWorkerRef.value = null
+      onComplete({
+        downloaded: 0,
+        errors: [{ filename: '', error: `Worker exited unexpectedly (code ${code})` }],
+        status: 'failed',
+        downloadDir
+      })
+    }
+  })
+
+  return { started: true }
+}
+
+/**
+ * Fetches stored tokens, then spawns the Picker download worker.
+ * Returns { started: true }, { alreadyRunning: true }, or { error }.
+ */
+export async function handleStartPickerDownload(
+  sessionId: string,
+  downloadDir: string,
+  onProgress: (p: GoogleDownloadProgress) => void,
+  onComplete: (r: GoogleDownloadResult) => void,
+  activeWorkerRef: ActivePickerWorkerRef,
+  workerPath: string,
+  deps?: StartPickerDownloadDeps
+): Promise<{ started: true } | { alreadyRunning: true } | { error: string }> {
+  if (activeWorkerRef.value !== null) {
+    return { alreadyRunning: true }
+  }
+
+  const getTokensFn = deps?.getTokens ?? (() => getStoredTokensForDownload(deps?.authDeps))
+  const tokens = await getTokensFn()
+
+  if (!tokens) {
+    return { error: 'Not authenticated — please connect to Google Photos first' }
+  }
+
+  return spawnPickerDownloadWorker(
+    sessionId,
+    downloadDir,
+    tokens,
+    onProgress,
+    onComplete,
+    activeWorkerRef,
+    workerPath,
+    deps
+  )
+}
+
+/**
+ * Requests cancellation of the running Picker download worker.
+ */
+export function handleCancelPickerDownload(
+  activeWorkerRef: ActivePickerWorkerRef
+): { cancelled: true } | { noWorker: true } {
+  if (activeWorkerRef.value === null) {
+    return { noWorker: true }
+  }
+  activeWorkerRef.value.postMessage({ type: 'cancel' })
+  return { cancelled: true }
 }
 
 // ---------------------------------------------------------------------------
