@@ -42,6 +42,19 @@ export interface PickerHandlerDeps {
 }
 
 /**
+ * Maps internal Picker API error messages to user-facing, actionable strings.
+ * "Token expired" (401 from the Picker API) is a sentinel used internally by the
+ * downloader for token refresh; surface a clearer message to the UI instead.
+ */
+function toUserFacingError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err)
+  if (message === 'Token expired') {
+    return 'Your Google session has expired. Please disconnect and reconnect to continue.'
+  }
+  return message
+}
+
+/**
  * Creates a new Picker session. Returns { sessionId, pickerUri } or { error }.
  */
 export async function handleCreatePickerSession(
@@ -55,7 +68,7 @@ export async function handleCreatePickerSession(
     const session = await createPickerSession(accessToken, deps?.pickerDeps)
     return { sessionId: session.id, pickerUri: session.pickerUri }
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) }
+    return { error: toUserFacingError(err) }
   }
 }
 
@@ -78,7 +91,7 @@ export async function handlePollPickerSession(
     const result = await pollPickerSession(sessionId, accessToken, deps?.pickerDeps)
     return { ready: result.mediaItemsSet }
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) }
+    return { error: toUserFacingError(err) }
   }
 }
 

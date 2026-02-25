@@ -99,7 +99,7 @@
 | [TASK-032](TASK-032-picker-session-backend.md) | Implement Picker API session management (create, poll, list items) | `[x]` | 2026-02-25-session-024 |
 | [TASK-033](TASK-033-picker-download-worker.md) | Implement Picker download worker (fetch selected items + download to staging) | `[x]` | 2026-02-25-session-025 |
 | [TASK-034](TASK-034-picker-ui.md) | Implement Picker UI flow (open browser, polling status, progress, handoff to local import) | `[x]` | 2026-02-25-session-026 |
-| [TASK-035](TASK-035-picker-integration-test.md) | End-to-end integration test + update error messages and user guidance | `[ ]` | — |
+| [TASK-035](TASK-035-picker-integration-test.md) | End-to-end integration test + update error messages and user guidance | `[x]` | 2026-02-25-session-027 |
 
 ---
 

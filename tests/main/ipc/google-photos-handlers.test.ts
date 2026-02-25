@@ -190,12 +190,14 @@ describe('handleCreatePickerSession', () => {
     })
   })
 
-  it('returns error when API returns 401', async () => {
+  it('returns actionable error when API returns 401 (token expired)', async () => {
     const deps = makePickerHandlerDeps({ fetchStatus: 401, fetchBody: {} })
 
     const result = await handleCreatePickerSession(deps)
 
-    expect(result).toEqual({ error: 'Token expired' })
+    expect(result).toEqual({
+      error: 'Your Google session has expired. Please disconnect and reconnect to continue.'
+    })
   })
 
   it('returns error when API returns 500', async () => {
@@ -243,12 +245,14 @@ describe('handlePollPickerSession', () => {
     })
   })
 
-  it('returns error when API returns 401', async () => {
+  it('returns actionable error when API returns 401 (token expired)', async () => {
     const deps = makePickerHandlerDeps({ fetchStatus: 401, fetchBody: {} })
 
     const result = await handlePollPickerSession('session-123', deps)
 
-    expect(result).toEqual({ error: 'Token expired' })
+    expect(result).toEqual({
+      error: 'Your Google session has expired. Please disconnect and reconnect to continue.'
+    })
   })
 
   it('returns error as string when non-Error is thrown', async () => {
