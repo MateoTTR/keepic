@@ -1,6 +1,7 @@
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { extname } from 'path'
 import sharp from 'sharp'
+import decode from 'heic-decode'
 
 // ---------------------------------------------------------------------------
 // Pure helpers
@@ -47,21 +48,43 @@ export function isLivePhotoMov(movPath: string, checkExists: ExistsChecker = exi
 /** Injectable HEIC converter: reads `src`, writes a JPEG to `dest`. */
 export type HeicConverter = (src: string, dest: string, quality: number) => Promise<void>
 
-/**
- * Default converter using sharp.
- * EXIF metadata (date, GPS, orientation…) is preserved via `.withMetadata()`.
- * Throws on any sharp error; the caller is responsible for error handling.
- */
-export const defaultHeicConverter: HeicConverter = async (
-  src: string,
-  dest: string,
-  quality: number
-): Promise<void> => {
-  await sharp(src).jpeg({ quality }).withMetadata().toFile(dest)
-}
+/** Injectable HEIC pixel decoder (defaults to heic-decode). */
+export type HeicPixelDecoder = (options: {
+  buffer: Buffer | ArrayBuffer | Uint8Array
+}) => Promise<{ data: Uint8ClampedArray; width: number; height: number }>
 
 /**
- * Converts a HEIC/HEIF image to JPEG, preserving EXIF metadata.
+ * Creates a HeicConverter that decodes HEIC via a pixel decoder, then encodes
+ * to JPEG via sharp (mozjpeg).
+ *
+ * sharp's prebuilt binaries do not include the HEVC decoder (patent licensing),
+ * so we rely on heic-decode (WebAssembly libde265) for the pixel decoding step.
+ *
+ * Note: EXIF metadata from the original HEIC is not embedded in the output JPEG.
+ * The import pipeline stores metadata (date, GPS, dimensions) in the SQLite
+ * database separately via exifreader, so no information is lost.
+ *
+ * @param decodeHeic - Injectable pixel decoder (defaults to heic-decode).
+ * @param readFile   - Injectable file reader (defaults to readFileSync).
+ */
+export function createHeicConverter(
+  decodeHeic: HeicPixelDecoder = decode,
+  readFile: (path: string) => Buffer = readFileSync
+): HeicConverter {
+  return async (src: string, dest: string, quality: number): Promise<void> => {
+    const inputBuffer = readFile(src)
+    const { data, width, height } = await decodeHeic({ buffer: inputBuffer })
+    await sharp(Buffer.from(data.buffer), { raw: { width, height, channels: 4 } })
+      .jpeg({ quality })
+      .toFile(dest)
+  }
+}
+
+/** Default converter using heic-decode + sharp. */
+export const defaultHeicConverter: HeicConverter = createHeicConverter()
+
+/**
+ * Converts a HEIC/HEIF image to JPEG.
  *
  * The conversion runs in a temp directory; moving the result to the library
  * folder is the responsibility of the import pipeline (TASK-010).

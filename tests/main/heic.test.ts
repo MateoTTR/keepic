@@ -7,28 +7,32 @@ import {
   getHeicCandidatePaths,
   isLivePhotoMov,
   convertHeicToJpeg,
-  defaultHeicConverter
+  createHeicConverter,
+  type HeicPixelDecoder
 } from '../../src/main/heic'
 
 // ---------------------------------------------------------------------------
-// Test fixtures (real image files created at runtime)
+// Test fixtures
 // ---------------------------------------------------------------------------
 
 let tmpDir: string
-let sourceJpeg: string
-let outputJpeg: string
 
-beforeAll(async () => {
+/** Creates a mock HeicPixelDecoder that returns RGBA pixels of the given size. */
+function createMockDecoder(width = 8, height = 8): HeicPixelDecoder {
+  return async () => {
+    const data = new Uint8ClampedArray(width * height * 4)
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = 120 // R
+      data[i + 1] = 80 // G
+      data[i + 2] = 200 // B
+      data[i + 3] = 255 // A
+    }
+    return { data, width, height }
+  }
+}
+
+beforeAll(() => {
   tmpDir = mkdtempSync(join(tmpdir(), 'keepic-heic-test-'))
-  sourceJpeg = join(tmpDir, 'source.jpg')
-  outputJpeg = join(tmpDir, 'output.jpg')
-
-  // Small solid-colour JPEG — exercises the same sharp code path as a real HEIC
-  await sharp({
-    create: { width: 8, height: 8, channels: 3, background: { r: 120, g: 80, b: 200 } }
-  })
-    .jpeg()
-    .toFile(sourceJpeg)
 })
 
 afterAll(() => {
@@ -125,41 +129,72 @@ describe('convertHeicToJpeg', () => {
   })
 
   it('uses defaultHeicConverter when no converter is provided', async () => {
-    // Calls convertHeicToJpeg without the 4th argument → falls back to defaultHeicConverter
-    await convertHeicToJpeg(sourceJpeg, outputJpeg, 80)
-    expect(existsSync(outputJpeg)).toBe(true)
-    const meta = await sharp(outputJpeg).metadata()
-    expect(meta.format).toBe('jpeg')
+    // Write a fake "HEIC" file — defaultHeicConverter uses the real heic-decode
+    // which validates HEIC magic bytes, so this will throw TypeError.
+    // This test verifies the default parameter wiring (falls back to defaultHeicConverter).
+    const fakeHeic = join(tmpDir, 'not-a-real.heic')
+    const outputJpeg = join(tmpDir, 'output-default.jpg')
+    // Write some non-HEIC bytes to trigger heic-decode's type check
+    const { writeFileSync } = await import('fs')
+    writeFileSync(fakeHeic, Buffer.alloc(32, 0))
+    await expect(convertHeicToJpeg(fakeHeic, outputJpeg, 80)).rejects.toThrow()
   })
 })
 
 // ---------------------------------------------------------------------------
-// defaultHeicConverter
+// createHeicConverter
 // ---------------------------------------------------------------------------
 
-describe('defaultHeicConverter', () => {
-  it('writes a JPEG to the destination path', async () => {
-    const destPath = join(tmpDir, 'default-converter-out.jpg')
-    await defaultHeicConverter(sourceJpeg, destPath, 75)
+describe('createHeicConverter', () => {
+  it('decodes HEIC pixels then encodes a valid JPEG file', async () => {
+    const destPath = join(tmpDir, 'converter-out.jpg')
+    const srcPath = join(tmpDir, 'fake-source.heic')
+    const fakeContent = Buffer.from('fake-heic-content')
+    const { writeFileSync } = await import('fs')
+    writeFileSync(srcPath, fakeContent)
+
+    const converter = createHeicConverter(createMockDecoder(8, 8))
+    await converter(srcPath, destPath, 75)
+
     expect(existsSync(destPath)).toBe(true)
     const meta = await sharp(destPath).metadata()
     expect(meta.format).toBe('jpeg')
+    expect(meta.width).toBe(8)
+    expect(meta.height).toBe(8)
+  })
+
+  it('passes the file buffer to the decoder', async () => {
+    const srcPath = join(tmpDir, 'pass-buffer.heic')
+    const destPath = join(tmpDir, 'pass-buffer-out.jpg')
+    const content = Buffer.from('test-heic-bytes-123')
+    const { writeFileSync } = await import('fs')
+    writeFileSync(srcPath, content)
+
+    let receivedBuffer: Buffer | ArrayBuffer | Uint8Array | undefined
+    const trackingDecoder: HeicPixelDecoder = async (opts) => {
+      receivedBuffer = opts.buffer
+      const data = new Uint8ClampedArray(4 * 4 * 4).fill(128)
+      return { data, width: 4, height: 4 }
+    }
+
+    const converter = createHeicConverter(trackingDecoder)
+    await converter(srcPath, destPath, 80)
+
+    expect(Buffer.isBuffer(receivedBuffer)).toBe(true)
+    expect((receivedBuffer as Buffer).toString()).toBe('test-heic-bytes-123')
   })
 
   it('respects the quality parameter (lower quality → smaller file)', async () => {
     const highQualityPath = join(tmpDir, 'high-quality.jpg')
     const lowQualityPath = join(tmpDir, 'low-quality.jpg')
+    const srcPath = join(tmpDir, 'quality-source.heic')
+    const { writeFileSync } = await import('fs')
+    writeFileSync(srcPath, Buffer.from('dummy'))
 
-    // Use a slightly larger image so quality difference is measurable
-    const bigSource = join(tmpDir, 'big-source.jpg')
-    const pixels = Buffer.alloc(200 * 200 * 3)
-    for (let i = 0; i < pixels.length; i++) pixels[i] = Math.floor(Math.random() * 256)
-    await sharp(pixels, { raw: { width: 200, height: 200, channels: 3 } })
-      .jpeg()
-      .toFile(bigSource)
-
-    await defaultHeicConverter(bigSource, highQualityPath, 95)
-    await defaultHeicConverter(bigSource, lowQualityPath, 1)
+    // Use a larger image so quality difference is measurable
+    const converter = createHeicConverter(createMockDecoder(200, 200))
+    await converter(srcPath, highQualityPath, 95)
+    await converter(srcPath, lowQualityPath, 1)
 
     const highSize = statSync(highQualityPath).size
     const lowSize = statSync(lowQualityPath).size
@@ -167,8 +202,42 @@ describe('defaultHeicConverter', () => {
   })
 
   it('throws when the source file does not exist', async () => {
+    const converter = createHeicConverter(createMockDecoder())
     await expect(
-      defaultHeicConverter('/nonexistent/photo.heic', join(tmpDir, 'out.jpg'), 90)
+      converter('/nonexistent/photo.heic', join(tmpDir, 'out.jpg'), 90)
     ).rejects.toThrow()
+  })
+
+  it('throws when the decoder rejects', async () => {
+    const srcPath = join(tmpDir, 'decode-fail.heic')
+    const { writeFileSync } = await import('fs')
+    writeFileSync(srcPath, Buffer.from('bad'))
+
+    const failingDecoder: HeicPixelDecoder = async () => {
+      throw new Error('HEIF processing error')
+    }
+    const converter = createHeicConverter(failingDecoder)
+    await expect(
+      converter(srcPath, join(tmpDir, 'fail-out.jpg'), 80)
+    ).rejects.toThrow('HEIF processing error')
+  })
+
+  it('uses the injected readFile function', async () => {
+    const destPath = join(tmpDir, 'custom-read-out.jpg')
+    const fakeBuffer = Buffer.from('custom-read-content')
+    const mockReadFile = (): Buffer => fakeBuffer
+
+    let receivedBuffer: Buffer | ArrayBuffer | Uint8Array | undefined
+    const trackingDecoder: HeicPixelDecoder = async (opts) => {
+      receivedBuffer = opts.buffer
+      const data = new Uint8ClampedArray(4 * 4 * 4).fill(200)
+      return { data, width: 4, height: 4 }
+    }
+
+    const converter = createHeicConverter(trackingDecoder, mockReadFile)
+    await converter('/any/path.heic', destPath, 80)
+
+    expect(receivedBuffer).toBe(fakeBuffer)
+    expect(existsSync(destPath)).toBe(true)
   })
 })

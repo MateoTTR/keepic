@@ -28,6 +28,7 @@
     "clsx": "^2.1.1",
     "electron-updater": "^6.1.7",
     "exifreader": "^4.36.2",
+    "heic-decode": "^2.1.0",
     "keytar": "^7.9.0",
     "sharp": "^0.33.3",
     "tailwind-variants": "^3.2.2"
