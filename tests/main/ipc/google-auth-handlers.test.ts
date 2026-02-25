@@ -86,7 +86,7 @@ describe('handleConnect', () => {
       refresh_token: 'refresh-token',
       expires_in: 3600,
       id_token: makeIdToken('connected@gmail.com'),
-      scope: 'openid email https://www.googleapis.com/auth/photoslibrary.readonly'
+      scope: 'openid email https://www.googleapis.com/auth/photospicker.mediaitems.readonly'
     }
 
     const fetchMock = vi.fn(

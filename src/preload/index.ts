@@ -4,8 +4,6 @@ import type {
   AppConfig,
   DuplicateGroup,
   GoogleAuthStatus,
-  GoogleDownloadProgress,
-  GoogleDownloadResult,
   ImportPlan,
   ImportProgress,
   ImportResult,
@@ -99,22 +97,6 @@ const keepicAPI = {
 
     getLastDownloadDate: (): Promise<{ date: string | null }> =>
       ipcRenderer.invoke('google:get-last-download-date'),
-
-    startDownload: (
-      startDate: string
-    ): Promise<{ started: true } | { alreadyRunning: true } | { error: string }> =>
-      ipcRenderer.invoke('google:start-download', { startDate }),
-
-    cancelDownload: (): Promise<{ cancelled: true } | { noWorker: true }> =>
-      ipcRenderer.invoke('google:cancel-download'),
-
-    onDownloadProgress: (callback: (p: GoogleDownloadProgress) => void): void => {
-      ipcRenderer.on('google:download-progress', (_event, data) => callback(data))
-    },
-
-    onDownloadComplete: (callback: (r: GoogleDownloadResult) => void): void => {
-      ipcRenderer.on('google:download-complete', (_event, data) => callback(data))
-    },
 
     cleanupDownloadDir: (dirPath: string): Promise<void> =>
       ipcRenderer.invoke('google:cleanup-download-dir', { dirPath })

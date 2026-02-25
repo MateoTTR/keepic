@@ -12,10 +12,7 @@ export default defineConfig({
           index: resolve('src/main/index.ts'),
           'workers/indexer.worker': resolve('src/workers/indexer.worker.ts'),
           'workers/planner.worker': resolve('src/workers/planner.worker.ts'),
-          'workers/importer.worker': resolve('src/workers/importer.worker.ts'),
-          'workers/google-photos-download.worker': resolve(
-            'src/workers/google-photos-download.worker.ts'
-          )
+          'workers/importer.worker': resolve('src/workers/importer.worker.ts')
         }
       }
     },

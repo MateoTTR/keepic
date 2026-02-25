@@ -18,7 +18,7 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const GOOGLE_SCOPE = [
   'openid',
   'email',
-  'https://www.googleapis.com/auth/photoslibrary.readonly'
+  'https://www.googleapis.com/auth/photospicker.mediaitems.readonly'
 ].join(' ')
 
 // ---------------------------------------------------------------------------
@@ -237,11 +237,11 @@ export async function startOAuthFlow(deps?: GoogleAuthDeps): Promise<{ email: st
   }
 
   const grantedScopes = (tokenData.scope ?? '').split(' ')
-  if (!grantedScopes.includes('https://www.googleapis.com/auth/photoslibrary.readonly')) {
+  if (!grantedScopes.includes('https://www.googleapis.com/auth/photospicker.mediaitems.readonly')) {
     throw new Error(
-      'Google Photos Library access was not granted. ' +
+      'Google Photos Picker access was not granted. ' +
         'Please disconnect and reconnect, ensuring you approve the ' +
-        '"Access your Google Photos Library" permission when prompted.'
+        '"Access items in your Google Photos library" permission when prompted.'
     )
   }
 
@@ -329,7 +329,7 @@ export async function getValidAccessToken(deps?: GoogleAuthDeps): Promise<string
   // If the refresh response includes a scope field, verify Photos access is still granted
   if (refreshData.scope !== undefined) {
     const grantedScopes = refreshData.scope.split(' ')
-    if (!grantedScopes.includes('https://www.googleapis.com/auth/photoslibrary.readonly')) {
+    if (!grantedScopes.includes('https://www.googleapis.com/auth/photospicker.mediaitems.readonly')) {
       await keytarDelete(KEYTAR_SERVICE, KEYTAR_ACCOUNT)
       return null
     }

@@ -59,7 +59,7 @@ function makeTokenResponse(email: string, scope?: string): object {
     id_token: makeIdToken(email),
     scope:
       scope ??
-      'openid email https://www.googleapis.com/auth/photoslibrary.readonly'
+      'openid email https://www.googleapis.com/auth/photospicker.mediaitems.readonly'
   }
 }
 
@@ -264,7 +264,7 @@ describe('startOAuthFlow', () => {
     await expect(startOAuthFlow(deps)).rejects.toThrow('OAuth timeout')
   })
 
-  it('throws when photoslibrary.readonly is missing from granted scopes', async () => {
+  it('throws when photospicker.mediaitems.readonly is missing from granted scopes', async () => {
     const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore()
     const deps: GoogleAuthDeps = {
       credentials: validCredentials,
@@ -275,7 +275,7 @@ describe('startOAuthFlow', () => {
       keytarDelete
     }
     await expect(startOAuthFlow(deps)).rejects.toThrow(
-      'Google Photos Library access was not granted'
+      'Google Photos Picker access was not granted'
     )
     expect(keytarSet).not.toHaveBeenCalled()
   })
@@ -298,7 +298,7 @@ describe('startOAuthFlow', () => {
       keytarDelete
     }
     await expect(startOAuthFlow(deps)).rejects.toThrow(
-      'Google Photos Library access was not granted'
+      'Google Photos Picker access was not granted'
     )
   })
 
@@ -309,7 +309,7 @@ describe('startOAuthFlow', () => {
       fetch: makeFetchOk(
         makeTokenResponse(
           'user@gmail.com',
-          'openid email https://www.googleapis.com/auth/photoslibrary.readonly.limited'
+          'openid email https://www.googleapis.com/auth/photospicker.mediaitems.readonly.extra'
         )
       ),
       openBrowser: makeBrowserMock(),
@@ -318,7 +318,7 @@ describe('startOAuthFlow', () => {
       keytarDelete
     }
     await expect(startOAuthFlow(deps)).rejects.toThrow(
-      'Google Photos Library access was not granted'
+      'Google Photos Picker access was not granted'
     )
   })
 })
@@ -475,7 +475,7 @@ describe('getValidAccessToken', () => {
     const fetchMock = makeFetchOk({
       access_token: 'new-access-token',
       expires_in: 3600,
-      scope: 'openid email https://www.googleapis.com/auth/photoslibrary.readonly'
+      scope: 'openid email https://www.googleapis.com/auth/photospicker.mediaitems.readonly'
     })
 
     const token = await getValidAccessToken({
@@ -491,7 +491,7 @@ describe('getValidAccessToken', () => {
     expect(keytarDelete).not.toHaveBeenCalled()
   })
 
-  it('returns null and deletes tokens when refresh response has scope without photoslibrary', async () => {
+  it('returns null and deletes tokens when refresh response has scope without picker scope', async () => {
     const nearExpiryTokens: StoredTokens = {
       ...baseTokens,
       expiresAt: Date.now() + 2 * 60 * 1000
