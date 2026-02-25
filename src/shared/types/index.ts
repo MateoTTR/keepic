@@ -113,12 +113,6 @@ export interface GoogleAuthStatus {
   email?: string
 }
 
-export interface GoogleDownloadProgress {
-  fetched: number // API items returned so far (across all pages)
-  downloaded: number // files written to disk
-  currentFile: string | null
-}
-
 export interface GoogleDownloadResult {
   status: ImportStatus
   downloaded: number
