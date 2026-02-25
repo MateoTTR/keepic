@@ -16,46 +16,47 @@ heif: Error while loading plugin: No decoding plugin installed for this compress
 
 JPEG files import successfully. Only HEIC files are affected.
 
-## Root Cause (hypothesis)
+## Root Cause (confirmed)
 
-The error `"No decoding plugin installed for this compression format"` comes from
-sharp's underlying libheif/libvips library. This typically means:
+sharp@0.33.5's prebuilt binaries **do not include the HEVC/H.265 decoder** (libde265)
+due to patent licensing concerns. The bundled libheif only supports AV1/AVIF decoding.
 
-1. **Missing HEIF decoder plugin**: sharp@0.33.x bundles prebuilt binaries with libheif
-   support, but the HEIF decoder (libde265 or similar) may not be included in the
-   platform-specific binary, or may fail to load at runtime.
+Evidence: `sharp.format.heif.input.fileSuffix` only contains `[".avif"]` — no `.heic`
+or `.heif`. This fails in both dev mode and packaged app (not an Electron packaging issue).
 
-2. **Electron packaging issue**: sharp is listed in `asarUnpack` in electron-builder config,
-   but the native `.node` addon or its companion shared libraries (`.dll`/`.dylib`) may
-   not be correctly unpacked or may have path resolution issues at runtime.
+## Solution
 
-3. **sharp version**: The bundled sharp@0.33.5 may have a regression or incompatibility
-   with the Electron version being used.
+Replace the sharp-only HEIC→JPEG pipeline with a two-step approach:
 
-## Investigation steps
+1. **Decode**: `heic-decode` (npm) — uses `libheif-js` which bundles a WebAssembly port
+   of libde265 (HEVC decoder). The WASM binary is inlined in `libheif-bundle.js` (base64),
+   so no external `.wasm` file loading — works seamlessly inside Electron's asar archive.
 
-1. **Reproduce locally**: Run a unit test that calls `sharp(heicPath).jpeg().toFile(dest)`
-   on a real HEIC file to confirm whether the issue is sharp-level or Electron-level.
+2. **Encode**: `sharp` — receives raw RGBA pixels from heic-decode, encodes to JPEG via
+   mozjpeg with quality control.
 
-2. **Check sharp HEIF support**: Run `sharp.format` to see if `heif` input is listed as
-   supported. If not, the prebuilt binary is missing HEIF support.
+### EXIF metadata note
 
-3. **Test in dev mode vs packaged**: If it works in `npm run dev` but fails in the
-   packaged app, the issue is electron-builder's `asarUnpack` configuration.
+The output JPEG does not embed EXIF metadata from the original HEIC. This is acceptable
+because the import pipeline already extracts and stores all metadata (date_taken, GPS,
+dimensions) in the SQLite database via `exifreader` before conversion.
 
-4. **Check sharp version compatibility**: Verify sharp@0.33.5 supports HEIF on Windows.
-   Consider upgrading to sharp@0.34.x if needed.
+## Changes
 
-## Affected code
-
-- `src/main/heic.ts` — `defaultHeicConverter` calls `sharp(src).jpeg({ quality }).withMetadata().toFile(dest)`
-- `src/main/importer.ts` — calls converter during both planning (pHash) and execution
-- `src/workers/planner.worker.ts` — runs planning in worker thread
-- `src/workers/importer.worker.ts` — runs execution in worker thread
+| File | Change |
+|---|---|
+| `package.json` | Add `heic-decode@^2.0.0` dependency |
+| `src/main/heic.ts` | New `createHeicConverter()` factory with injectable `HeicPixelDecoder`; `defaultHeicConverter` uses real `heic-decode` |
+| `src/main/heic-decode.d.ts` | TypeScript declarations for `heic-decode` (no `@types` package available) |
+| `tests/main/heic.test.ts` | Rewritten: tests use injectable mock decoder for the decode step, real sharp for JPEG encoding |
 
 ## Deliverables
 
-1. Identify whether the issue is sharp config, packaging, or library version
-2. Fix the HEIC decoding — all HEIC files should convert to JPEG and import successfully
-3. Add a test with a real HEIC file if feasible (or document why not)
-4. Verify fix works in packaged app on Windows
+1. ~~Identify whether the issue is sharp config, packaging, or library version~~ → **Confirmed: sharp prebuilt missing HEVC decoder**
+2. ~~Fix the HEIC decoding~~ → **Done: heic-decode + sharp pipeline**
+3. ~~Add a test with a real HEIC file if feasible~~ → **Not feasible without a test fixture; used injectable mock decoder instead (6 tests covering the full pipeline)**
+4. Verify fix works in packaged app on Windows → **Pending manual test after merge**
+
+## PR
+
+[#28](https://github.com/MateoTTR/keepic/pull/28) — targeting `develop`
