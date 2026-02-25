@@ -113,10 +113,10 @@
 
 ## Backlog — Refactoring / Performance / Features
 
-> Items identified during session 018. No task file yet — to be planned when prioritised.
+> Items identified during session 018.
 
 | ID | Title | Type | Priority |
 |---|---|---|---|
-| REFACTOR-001 | Simplify HEIC pHash workflow — compute pHash directly on raw HEIC, remove temp conversion in planner | Refactor | P2 |
+| [REFACTOR-001](REFACTOR-001-heic-phash-simplification.md) | Simplify HEIC pHash workflow — compute pHash directly on raw HEIC, remove temp conversion in planner | Refactor | P2 |
 | PERF-001 | Indexer concurrent processing — worker pool `os.cpus().length`, estimated ×4–8 speedup on multi-core machines | Perf | P3 |
 | FEAT-001 | Side-by-side duplicate comparison viewer with metadata and "Reveal in Explorer/Finder" | Feature | P4 |
