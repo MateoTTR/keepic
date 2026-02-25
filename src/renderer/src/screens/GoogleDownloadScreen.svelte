@@ -224,7 +224,7 @@
             {downloadResult!.errors.length} file{downloadResult!.errors.length !== 1 ? 's' : ''} could not be downloaded:
           </p>
           <ul class="list-disc list-inside text-sm text-amber-700 space-y-1">
-            {#each downloadResult!.errors as err}
+            {#each downloadResult!.errors as err (err.filename)}
               <li class="font-mono text-xs truncate">{err.filename}: {err.error}</li>
             {/each}
           </ul>
