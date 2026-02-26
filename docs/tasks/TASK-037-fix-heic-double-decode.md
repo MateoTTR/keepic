@@ -57,6 +57,22 @@ Staging is cleaner and avoids any risk of the JPEG differing between plan and ex
 
 ---
 
+## Affected modules
+
+Three code paths process HEIC files and all three must be updated:
+
+| Module | Current behaviour | Target behaviour |
+|---|---|---|
+| **Planner** (`buildImportPlan`) | WASM decode → pHash | ffmpeg → staged JPEG → pHash (sharp) |
+| **Executor** (`executeImportPlan`) | WASM decode → JPEG | move staged JPEG (no re-decode) |
+| **Indexer** (`runIndexer`) | sharp fails silently → null | ffmpeg → temp JPEG → pHash (sharp) → delete temp |
+
+The indexer currently stores `null` pHash for every HEIC file in the library (sharp cannot
+decode HEIC). This means HEIC files are never deduplicated against library contents.
+TASK-037 must fix this as well.
+
+---
+
 ## Deliverables
 
 ### 1. Dependencies
@@ -65,10 +81,19 @@ Staging is cleaner and avoids any risk of the JPEG differing between plan and ex
 
 ### 2. `src/main/heic.ts`
 - Replace `defaultHeicConverter` implementation: use `child_process.spawn(ffmpegPath, ['-i', src, '-q:v', quality, dest])`
-- Remove `createHeicPhashComputer` / `defaultHeicPhashComputer` (no longer needed — pHash computed from JPEG via native sharp)
+- Remove `createHeicPhashComputer` / `defaultHeicPhashComputer` (replaced by universal computer)
 - Export `getFfmpegPath()` helper: resolves binary path for dev vs production (asar.unpacked)
+- Export `createUniversalPhashComputer(ffmpegPath)`: routes by extension
+  - `.heic` / `.heif`: ffmpeg → temp JPEG → sharp pHash → delete temp
+  - all others: native sharp directly
+  - Used by the indexer via `RunIndexerOptions.computePhash` injection (no interface change)
 
-### 3. `src/main/importer.ts`
+### 3. `src/main/indexer.ts`
+- No interface change to `RunIndexerOptions` — `computePhash` already injectable
+- Default value: replace `defaultPhashComputer` with `createUniversalPhashComputer(getFfmpegPath())`
+- HEIC files in the library now get a real pHash stored in DB ✅
+
+### 4. `src/main/importer.ts`
 - `PlannerOptions`:
   - Remove `computeHeicPhash?: PhashComputer`
   - Add `stagingDir?: string` (where planner writes temp JPEGs)
@@ -81,18 +106,23 @@ Staging is cleaner and avoids any risk of the JPEG differing between plan and ex
   - Move `stagedPath` directly to `destAbsPath` (no re-conversion)
   - Cleanup: in `finally`, delete any remaining `stagedPath` files
 
-### 4. `src/shared/types.ts` — `ImportPlanEntry`
+### 5. `src/shared/types.ts` — `ImportPlanEntry`
 - Add `stagedPath?: string` (internal, not displayed in UI)
 
-### 5. `electron-builder.yml` (or equivalent config)
+### 6. `electron-builder.yml` (or equivalent config)
 - Add `asarUnpack: ["**/node_modules/ffmpeg-static/**"]`
 
-### 6. `tests/main/heic.test.ts`
+### 7. `tests/main/heic.test.ts`
 - Remove tests for `createHeicPhashComputer` (deleted function)
 - Add tests for `createHeicConverter` ffmpeg-based implementation
+- Add tests for `createUniversalPhashComputer` (HEIC path + non-HEIC path)
 - Add test for `getFfmpegPath()` (dev vs prod path resolution)
 
-### 7. `tests/main/importer.test.ts`
+### 8. `tests/main/indexer.test.ts`
+- Update: inject mock `computePhash` that simulates HEIC-aware behaviour
+- Add test: HEIC file in library → pHash computed and stored (non-null)
+
+### 9. `tests/main/importer.test.ts`
 - Update planner HEIC tests: `convertHeic` now produces a staged JPEG, `computePhash` called on it
 - Update executor HEIC tests: entry with `stagedPath` → move instead of convert
 - Add executor test: staged JPEG moved to library, pHash stored
@@ -135,8 +165,25 @@ function getFfmpegPath(): string {
 
 ## Test Coverage
 
-- `buildImportPlan` HEIC + conversion: `convertHeicFn` called → staged JPEG created → `computePhash(stagedPath)` called → pHash stored
-- `buildImportPlan` HEIC + conversion disabled: normal `computePhash(srcPath)` as before
-- `executeImportPlan` HEIC + stagedPath: move (not convert) to library, pHash from plan stored
-- `executeImportPlan` HEIC + stagedPath + move error: error recorded, staged file cleaned up
-- `executeImportPlan` finally: staged files cleaned up on cancellation
+### Indexer
+- HEIC file in library → `createUniversalPhashComputer` called → pHash non-null stored in DB
+- Non-HEIC file → native sharp path used
+
+### Planner
+- HEIC + conversion enabled: `convertHeicFn` called → staged JPEG → `computePhash(stagedPath)` → duplicate detection works
+- HEIC + conversion disabled: normal `computePhash(srcPath)` (no staging)
+
+### Executor
+- Entry with `stagedPath`: move to library (no re-conversion), pHash from plan stored
+- Entry with `stagedPath` + move error: error recorded, staged file cleaned up in finally
+- Cancellation: all remaining `stagedPath` files cleaned up
+
+### `createUniversalPhashComputer`
+- HEIC input: routes through ffmpeg → temp JPEG → pHash → temp deleted
+- Non-HEIC input: routes through native sharp directly
+- HEIC decode error (ffmpeg fails): returns null
+
+### `createHeicConverter` (ffmpeg-based)
+- Calls ffmpeg with correct arguments
+- Passes quality parameter to ffmpeg `-q:v`
+- Propagates error if ffmpeg exits non-zero
