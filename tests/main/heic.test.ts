@@ -8,6 +8,7 @@ import {
   isLivePhotoMov,
   convertHeicToJpeg,
   createHeicConverter,
+  createHeicPhashComputer,
   type HeicPixelDecoder
 } from '../../src/main/heic'
 
@@ -217,9 +218,9 @@ describe('createHeicConverter', () => {
       throw new Error('HEIF processing error')
     }
     const converter = createHeicConverter(failingDecoder)
-    await expect(
-      converter(srcPath, join(tmpDir, 'fail-out.jpg'), 80)
-    ).rejects.toThrow('HEIF processing error')
+    await expect(converter(srcPath, join(tmpDir, 'fail-out.jpg'), 80)).rejects.toThrow(
+      'HEIF processing error'
+    )
   })
 
   it('uses the injected readFile function', async () => {
@@ -239,5 +240,75 @@ describe('createHeicConverter', () => {
 
     expect(receivedBuffer).toBe(fakeBuffer)
     expect(existsSync(destPath)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// createHeicPhashComputer
+// ---------------------------------------------------------------------------
+
+describe('createHeicPhashComputer', () => {
+  it('returns a PhashResult with correct width/height and a non-empty hash', async () => {
+    const computer = createHeicPhashComputer(createMockDecoder(64, 48), () => Buffer.from('fake'))
+    const result = await computer('/any/photo.heic')
+
+    expect(result).not.toBeNull()
+    expect(result!.width).toBe(64)
+    expect(result!.height).toBe(48)
+    expect(result!.phash).toHaveLength(16) // 64-bit DCT hash → 16 hex chars
+  })
+
+  it('passes the file buffer to the decoder via the injected readFile', async () => {
+    const fakeBuffer = Buffer.from('fake-heic-bytes')
+    const mockReadFile = (): Buffer => fakeBuffer
+
+    let receivedBuffer: Buffer | ArrayBuffer | Uint8Array | undefined
+    const trackingDecoder: HeicPixelDecoder = async (opts) => {
+      receivedBuffer = opts.buffer
+      const data = new Uint8ClampedArray(8 * 8 * 4).fill(100)
+      return { data, width: 8, height: 8 }
+    }
+
+    const computer = createHeicPhashComputer(trackingDecoder, mockReadFile)
+    await computer('/any/photo.heic')
+
+    expect(receivedBuffer).toBe(fakeBuffer)
+  })
+
+  it('returns null when the decoder throws', async () => {
+    const failingDecoder: HeicPixelDecoder = async () => {
+      throw new Error('HEIF decode error')
+    }
+    const computer = createHeicPhashComputer(failingDecoder)
+    const result = await computer('/any/photo.heic')
+    expect(result).toBeNull()
+  })
+
+  it('returns null when readFile throws', async () => {
+    const throwingReadFile = (): Buffer => {
+      throw new Error('file not found')
+    }
+    const computer = createHeicPhashComputer(createMockDecoder(), throwingReadFile)
+    const result = await computer('/nonexistent/photo.heic')
+    expect(result).toBeNull()
+  })
+
+  it('returns null when sharp rejects due to invalid pixel dimensions', async () => {
+    // width=0, height=0 causes sharp to throw on raw input
+    const zeroSizeDecoder: HeicPixelDecoder = async () => ({
+      data: new Uint8ClampedArray(0),
+      width: 0,
+      height: 0
+    })
+    const computer = createHeicPhashComputer(zeroSizeDecoder)
+    const result = await computer('/any/photo.heic')
+    expect(result).toBeNull()
+  })
+
+  it('produces the same hash for identical pixel data regardless of file path', async () => {
+    const computer = createHeicPhashComputer(createMockDecoder(32, 32), () => Buffer.from('fake'))
+    const result1 = await computer('/path/a.heic')
+    const result2 = await computer('/path/b.heic')
+    expect(result1!.phash).toBe(result2!.phash)
   })
 })
