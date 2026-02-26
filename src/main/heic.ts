@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'fs'
 import { extname } from 'path'
 import sharp from 'sharp'
 import decode from 'heic-decode'
+import { dctHash, type PhashComputer, type PhashResult } from './phash'
 
 // ---------------------------------------------------------------------------
 // Pure helpers
@@ -102,3 +103,46 @@ export async function convertHeicToJpeg(
 ): Promise<void> {
   await converter(src, dest, quality)
 }
+
+// ---------------------------------------------------------------------------
+// HEIC → pHash (no temp file)
+// ---------------------------------------------------------------------------
+
+const PHASH_SAMPLE_SIZE = 32
+
+/**
+ * Creates a PhashComputer for HEIC/HEIF files.
+ * Decodes HEIC pixels via heic-decode (WASM), feeds the raw RGBA data into
+ * sharp, and computes the DCT pHash — no temporary file required.
+ *
+ * @param decodeHeic - Injectable pixel decoder (defaults to heic-decode).
+ * @param readFile   - Injectable file reader (defaults to readFileSync).
+ */
+export function createHeicPhashComputer(
+  decodeHeic: HeicPixelDecoder = decode,
+  readFile: (path: string) => Buffer = readFileSync
+): PhashComputer {
+  return async (filePath: string): Promise<PhashResult | null> => {
+    try {
+      const buffer = readFile(filePath)
+      const { data, width, height } = await decodeHeic({ buffer })
+      const { data: pixels } = await sharp(Buffer.from(data.buffer), {
+        raw: { width, height, channels: 4 }
+      })
+        .resize(PHASH_SAMPLE_SIZE, PHASH_SAMPLE_SIZE, { fit: 'fill' })
+        .greyscale()
+        .raw()
+        .toBuffer({ resolveWithObject: true })
+      return {
+        phash: dctHash(new Uint8Array(pixels), PHASH_SAMPLE_SIZE),
+        width,
+        height
+      }
+    } catch {
+      return null
+    }
+  }
+}
+
+/** Default HeicPhashComputer using heic-decode + sharp. */
+export const defaultHeicPhashComputer: PhashComputer = createHeicPhashComputer()
