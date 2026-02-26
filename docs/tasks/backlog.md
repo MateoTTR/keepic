@@ -71,10 +71,52 @@
 |---|---|---|---|
 | [TASK-022](TASK-022-packaging.md) | Configure electron-builder for Windows (NSIS) + macOS (DMG) releases | `[x]` | 2026-02-22-session-015 |
 
+## Phase 6 — Post-release bug fixes (v0.1.x)
+
+> Bugs and UX issues found during manual testing sessions (2026-02-23).
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| [TASK-023](TASK-023-fix-workers-build.md) | Fix workers build config — workers never compiled, all core features broken | P0 | `[x]` | 2026-02-23-session-017 |
+| [TASK-024](TASK-024-fix-oauth-callback-crash.md) | Fix OAuth callback server crash on second browser request | P1 | `[x]` | 2026-02-23-session-017 |
+| [TASK-025](TASK-025-auto-index-on-library-setup.md) | Warn user to index library after first configuration | P2 | `[x]` | 2026-02-23-session-017 |
+| [TASK-026](TASK-026-fix-import-execution-race-condition.md) | Fix import execution race condition (UI frozen on "Starting…") + cancel no-op | P0 | `[x]` | 2026-02-23-session-018 |
+| [TASK-027](TASK-027-fix-google-photos-403-scopes.md) | Fix Google Photos 403 insufficient scopes + improve error message | P1 | `[x]` | 2026-02-23-session-018 |
+| [TASK-028](TASK-028-fix-google-photos-scope-verification.md) | Fix Google Photos scope verification at connect time | P1 | `[x]` | 2026-02-24-session-020 |
+| [TASK-029](TASK-029-fix-import-worker-robustness.md) | Fix import worker robustness (frozen "Starting…" persists after TASK-026) | P0 | `[x]` | 2026-02-24-session-020 |
+| [TASK-030](TASK-030-fix-structured-clone-import.md) | Fix structured clone error breaking local import ($state.snapshot) | P0 | `[x]` | 2026-02-24-session-021 |
+| [TASK-036](TASK-036-fix-heic-import-decoding.md) | Fix HEIC import decoding failure — sharp/libheif plugin not loading | P0 | `[x]` | 2026-02-25-session-022 |
+
+## Phase 7 — Google Photos Picker API Migration
+
+> Migration from the deprecated Library API to the new Picker API.
+> The `photoslibrary.readonly` scope was deprecated by Google on March 31, 2025.
+> See [ADR-003 Amendment](../architecture/adr/ADR-003-google-photos-integration.md#amendment--migration-to-picker-api-2026-02-24).
+
+| # | Title | Status | Session |
+|---|---|---|---|
+| [TASK-031](TASK-031-remove-deprecated-library-api.md) | Remove deprecated Library API code + update OAuth scope | `[x]` | 2026-02-25-session-023 |
+| [TASK-032](TASK-032-picker-session-backend.md) | Implement Picker API session management (create, poll, list items) | `[x]` | 2026-02-25-session-024 |
+| [TASK-033](TASK-033-picker-download-worker.md) | Implement Picker download worker (fetch selected items + download to staging) | `[x]` | 2026-02-25-session-025 |
+| [TASK-034](TASK-034-picker-ui.md) | Implement Picker UI flow (open browser, polling status, progress, handoff to local import) | `[x]` | 2026-02-25-session-026 |
+| [TASK-035](TASK-035-picker-integration-test.md) | End-to-end integration test + update error messages and user guidance | `[x]` | 2026-02-25-session-027 |
+
 ---
 
 ## Upcoming / Not Yet Planned
 
-- In-app browse/viewer (Phase 6 — deferred)
+- In-app browse/viewer (Phase 8 — deferred)
 - Event folder creation UI
 - Settings screen (currently embedded in first-launch flow)
+
+---
+
+## Backlog — Refactoring / Performance / Features
+
+> Items identified during session 018.
+
+| ID | Title | Type | Priority |
+|---|---|---|---|
+| [REFACTOR-001](REFACTOR-001-heic-phash-simplification.md) | Simplify HEIC pHash workflow — compute pHash directly on raw HEIC, remove temp conversion in planner | Refactor | P2 | `[x]` | 2026-02-26-session-028 |
+| PERF-001 | Indexer concurrent processing — worker pool `os.cpus().length`, estimated ×4–8 speedup on multi-core machines | Perf | P3 |
+| FEAT-001 | Side-by-side duplicate comparison viewer with metadata and "Reveal in Explorer/Finder" | Feature | P4 |

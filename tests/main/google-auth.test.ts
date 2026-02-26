@@ -11,6 +11,8 @@ import {
   getAuthStatus,
   disconnect,
   getValidAccessToken,
+  getStoredTokensForDownload,
+  updateStoredAccessToken,
   extractEmailFromIdToken,
   startCallbackServer,
   type GoogleAuthDeps,
@@ -51,12 +53,13 @@ function makeIdToken(email: string): string {
   return `${header}.${payload}.fakesig`
 }
 
-function makeTokenResponse(email: string): object {
+function makeTokenResponse(email: string, scope?: string): object {
   return {
     access_token: 'access-token-123',
     refresh_token: 'refresh-token-456',
     expires_in: 3599,
-    id_token: makeIdToken(email)
+    id_token: makeIdToken(email),
+    scope: scope ?? 'openid email https://www.googleapis.com/auth/photospicker.mediaitems.readonly'
   }
 }
 
@@ -260,6 +263,64 @@ describe('startOAuthFlow', () => {
     }
     await expect(startOAuthFlow(deps)).rejects.toThrow('OAuth timeout')
   })
+
+  it('throws when photospicker.mediaitems.readonly is missing from granted scopes', async () => {
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore()
+    const deps: GoogleAuthDeps = {
+      credentials: validCredentials,
+      fetch: makeFetchOk(makeTokenResponse('user@gmail.com', 'openid email')),
+      openBrowser: makeBrowserMock(),
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    }
+    await expect(startOAuthFlow(deps)).rejects.toThrow(
+      'Google Photos Picker access was not granted'
+    )
+    expect(keytarSet).not.toHaveBeenCalled()
+  })
+
+  it('throws when scope field is absent from token response', async () => {
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore()
+    const tokenResponseNoScope = {
+      access_token: 'at',
+      refresh_token: 'rt',
+      expires_in: 3599,
+      id_token: makeIdToken('user@gmail.com')
+      // no scope field
+    }
+    const deps: GoogleAuthDeps = {
+      credentials: validCredentials,
+      fetch: makeFetchOk(tokenResponseNoScope),
+      openBrowser: makeBrowserMock(),
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    }
+    await expect(startOAuthFlow(deps)).rejects.toThrow(
+      'Google Photos Picker access was not granted'
+    )
+  })
+
+  it('throws when scope contains a similar but different scope (no false positive)', async () => {
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore()
+    const deps: GoogleAuthDeps = {
+      credentials: validCredentials,
+      fetch: makeFetchOk(
+        makeTokenResponse(
+          'user@gmail.com',
+          'openid email https://www.googleapis.com/auth/photospicker.mediaitems.readonly.extra'
+        )
+      ),
+      openBrowser: makeBrowserMock(),
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    }
+    await expect(startOAuthFlow(deps)).rejects.toThrow(
+      'Google Photos Picker access was not granted'
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -400,6 +461,221 @@ describe('getValidAccessToken', () => {
     })
 
     expect(token).toBeNull()
+  })
+
+  it('returns token when refresh response includes valid scope', async () => {
+    const nearExpiryTokens: StoredTokens = {
+      ...baseTokens,
+      expiresAt: Date.now() + 2 * 60 * 1000
+    }
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore(JSON.stringify(nearExpiryTokens))
+
+    const fetchMock = makeFetchOk({
+      access_token: 'new-access-token',
+      expires_in: 3600,
+      scope: 'openid email https://www.googleapis.com/auth/photospicker.mediaitems.readonly'
+    })
+
+    const token = await getValidAccessToken({
+      credentials: validCredentials,
+      fetch: fetchMock,
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    })
+
+    expect(token).toBe('new-access-token')
+    expect(keytarSet).toHaveBeenCalledOnce()
+    expect(keytarDelete).not.toHaveBeenCalled()
+  })
+
+  it('returns null and deletes tokens when refresh response has scope without picker scope', async () => {
+    const nearExpiryTokens: StoredTokens = {
+      ...baseTokens,
+      expiresAt: Date.now() + 2 * 60 * 1000
+    }
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore(JSON.stringify(nearExpiryTokens))
+
+    const fetchMock = makeFetchOk({
+      access_token: 'new-access-token',
+      expires_in: 3600,
+      scope: 'openid email'
+    })
+
+    const token = await getValidAccessToken({
+      credentials: validCredentials,
+      fetch: fetchMock,
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    })
+
+    expect(token).toBeNull()
+    expect(keytarDelete).toHaveBeenCalledWith(KEYTAR_SERVICE, KEYTAR_ACCOUNT)
+    expect(keytarSet).not.toHaveBeenCalled()
+  })
+
+  it('accepts refresh response without scope field (does not reject)', async () => {
+    const nearExpiryTokens: StoredTokens = {
+      ...baseTokens,
+      expiresAt: Date.now() + 2 * 60 * 1000
+    }
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore(JSON.stringify(nearExpiryTokens))
+
+    const fetchMock = makeFetchOk({
+      access_token: 'new-access-token',
+      expires_in: 3600
+      // no scope field — Google doesn't always include it on refresh
+    })
+
+    const token = await getValidAccessToken({
+      credentials: validCredentials,
+      fetch: fetchMock,
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    })
+
+    expect(token).toBe('new-access-token')
+    expect(keytarDelete).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getStoredTokensForDownload
+// ---------------------------------------------------------------------------
+
+describe('getStoredTokensForDownload', () => {
+  it('returns null when not authenticated', async () => {
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore(null)
+    const result = await getStoredTokensForDownload({
+      credentials: validCredentials,
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    })
+    expect(result).toBeNull()
+  })
+
+  it('returns DownloaderTokens with credentials when token is valid', async () => {
+    const stored: StoredTokens = {
+      accessToken: 'access-tok',
+      refreshToken: 'refresh-tok',
+      email: 'user@test.com',
+      expiresAt: Date.now() + 3_600_000
+    }
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore(JSON.stringify(stored))
+
+    const result = await getStoredTokensForDownload({
+      credentials: validCredentials,
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    })
+
+    expect(result).not.toBeNull()
+    expect(result!.accessToken).toBe('access-tok')
+    expect(result!.refreshToken).toBe('refresh-tok')
+    expect(result!.credentials).toEqual(validCredentials)
+  })
+
+  it('refreshes the token and returns the updated one when expired', async () => {
+    const stored: StoredTokens = {
+      accessToken: 'expired-access-tok',
+      refreshToken: 'my-refresh-tok',
+      email: 'user@test.com',
+      expiresAt: Date.now() - 1000 // already expired
+    }
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore(JSON.stringify(stored))
+    const mockFetch = makeFetchOk({ access_token: 'refreshed-token', expires_in: 3600 })
+
+    const result = await getStoredTokensForDownload({
+      credentials: validCredentials,
+      fetch: mockFetch,
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    })
+
+    expect(result).not.toBeNull()
+    expect(result!.accessToken).toBe('refreshed-token')
+    expect(result!.refreshToken).toBe('my-refresh-tok')
+  })
+
+  it('uses defaultKeytarGet when no keytarGet dep provided (calls mocked keytar)', async () => {
+    // keytar is mocked at module level; by default getPassword returns undefined → null
+    const result = await getStoredTokensForDownload({
+      credentials: validCredentials
+    })
+    expect(result).toBeNull()
+  })
+
+  it('uses DEFAULT_CREDENTIALS when credentials dep is absent but keytarGet is provided', async () => {
+    const stored: StoredTokens = {
+      accessToken: 'access-tok',
+      refreshToken: 'refresh-tok',
+      email: 'user@test.com',
+      expiresAt: Date.now() + 3_600_000 // valid, no refresh needed
+    }
+    const { keytarGet, keytarSet, keytarDelete } = makeKeytarStore(JSON.stringify(stored))
+
+    // No credentials in deps — DEFAULT_CREDENTIALS used (empty strings in test env).
+    // Token is not expired so getValidAccessToken succeeds without needing credentials.
+    const result = await getStoredTokensForDownload({
+      keytarGet,
+      keytarSet,
+      keytarDelete
+    })
+
+    expect(result).not.toBeNull()
+    expect(result!.accessToken).toBe('access-tok')
+    expect(result!.credentials).toBeDefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// updateStoredAccessToken
+// ---------------------------------------------------------------------------
+
+describe('updateStoredAccessToken', () => {
+  it('updates the stored access token and expiresAt in keytar', async () => {
+    const stored: StoredTokens = {
+      accessToken: 'old-token',
+      refreshToken: 'refresh-tok',
+      email: 'user@test.com',
+      expiresAt: Date.now()
+    }
+    const { keytarGet, keytarSet } = makeKeytarStore(JSON.stringify(stored))
+
+    await updateStoredAccessToken('new-token', 9999999999, {
+      credentials: validCredentials,
+      keytarGet,
+      keytarSet
+    })
+
+    expect(keytarSet).toHaveBeenCalledOnce()
+    const savedRaw = (keytarSet as ReturnType<typeof vi.fn>).mock.calls[0][2] as string
+    const saved = JSON.parse(savedRaw) as StoredTokens
+    expect(saved.accessToken).toBe('new-token')
+    expect(saved.expiresAt).toBe(9999999999)
+    expect(saved.refreshToken).toBe('refresh-tok') // unchanged
+  })
+
+  it('does nothing when no tokens are stored', async () => {
+    const { keytarGet, keytarSet } = makeKeytarStore(null)
+
+    await updateStoredAccessToken('new-token', 9999999999, {
+      credentials: validCredentials,
+      keytarGet,
+      keytarSet
+    })
+
+    expect(keytarSet).not.toHaveBeenCalled()
+  })
+
+  it('uses defaultKeytarGet/Set when no deps provided (calls mocked keytar module)', async () => {
+    // keytar is mocked at module level — calling without deps should not throw
+    await expect(updateStoredAccessToken('tok', Date.now() + 3_600_000)).resolves.not.toThrow()
   })
 })
 

@@ -1,20 +1,21 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
-  import type { ImportProgress, ImportResult } from '../../../shared/types'
+  import { onMount, onDestroy } from 'svelte'
+  import type { ImportPlan, ImportProgress, ImportResult } from '../../../shared/types'
   import Button from '../components/ui/Button.svelte'
   import Progress from '../components/ui/Progress.svelte'
 
   interface Props {
+    plan: ImportPlan
     onProgress: (p: ImportProgress) => void
     onComplete: (r: ImportResult) => void
   }
 
-  let { onProgress, onComplete }: Props = $props()
+  let { plan, onProgress, onComplete }: Props = $props()
 
   let progress: ImportProgress | null = $state(null)
   let cancelling: boolean = $state(false)
 
-  onMount(() => {
+  onMount(async () => {
     window.keepic.import.onProgress((p) => {
       progress = p
       onProgress(p)
@@ -22,11 +23,39 @@
     window.keepic.import.onComplete((r) => {
       onComplete(r)
     })
+
+    const result = await window.keepic.import.execute($state.snapshot(plan)).catch((err: Error) => ({
+      error: err.message
+    }))
+    if ('alreadyRunning' in result || 'error' in result) {
+      const msg = 'error' in result ? result.error : 'An import is already in progress.'
+      onComplete({
+        imported: 0,
+        skipped: 0,
+        livePhotosDiscarded: plan.livePhotosDiscarded,
+        errors: [{ sourcePath: '', error: msg }],
+        status: 'failed'
+      })
+    }
+  })
+
+  onDestroy(() => {
+    window.keepic.import.removeProgressListeners()
+    window.keepic.import.removeCompleteListeners()
   })
 
   async function cancel(): Promise<void> {
     cancelling = true
-    await window.keepic.import.cancel()
+    const result = await window.keepic.import.cancel()
+    if ('noWorker' in result && result.noWorker) {
+      onComplete({
+        imported: 0,
+        skipped: 0,
+        livePhotosDiscarded: plan.livePhotosDiscarded,
+        errors: [],
+        status: 'cancelled'
+      })
+    }
   }
 </script>
 

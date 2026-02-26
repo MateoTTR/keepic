@@ -18,9 +18,11 @@ import { handleScanDuplicates } from './ipc/dedup-scan-handler'
 import {
   handleGetLastDownloadDate,
   handleCleanupDownloadDir,
-  handleStartDownload,
-  handleCancelDownload,
-  type ActiveWorkerRef as GoogleActiveWorkerRef
+  handleCreatePickerSession,
+  handlePollPickerSession,
+  handleStartPickerDownload,
+  handleCancelPickerDownload,
+  type ActivePickerWorkerRef
 } from './ipc/google-photos-handlers'
 import type { ImportPlan } from '../shared/types'
 
@@ -71,12 +73,12 @@ app.whenReady().then(() => {
   // Track the running importer worker (Phase 2) to prevent concurrent imports.
   const importerWorkerRef: ActiveWorkerRef = { value: null }
 
-  // Track the running Google Photos download worker.
-  const googleDownloadWorkerRef: GoogleActiveWorkerRef = { value: null }
+  // Track the running Picker download worker.
+  const pickerWorkerRef: ActivePickerWorkerRef = { value: null }
 
   const plannerWorkerPath = join(__dirname, 'workers/planner.worker.js')
   const importerWorkerPath = join(__dirname, 'workers/importer.worker.js')
-  const googleDownloadWorkerPath = join(__dirname, 'workers/google-photos-download.worker.js')
+  const pickerWorkerPath = join(__dirname, 'workers/google-photos-picker.worker.js')
   const dbPath = join(app.getPath('userData'), 'index.db')
 
   // --- Config IPC ---
@@ -145,36 +147,36 @@ app.whenReady().then(() => {
   ipcMain.handle('google:connect', () => handleConnect())
   ipcMain.handle('google:disconnect', () => handleDisconnect())
 
-  // --- Google Photos Download IPC ---
+  // --- Google Photos IPC ---
 
   ipcMain.handle('google:get-last-download-date', () => {
     if (!database) return { date: null }
     return handleGetLastDownloadDate(database)
   })
 
-  ipcMain.handle('google:start-download', async (event, { startDate }: { startDate: string }) => {
-    const libraryPath = configManager.get().libraryPath
-    if (!libraryPath) return { error: 'No library path configured' }
-    if (!database) return { error: 'Database not open' }
-
-    return handleStartDownload(
-      startDate,
-      database,
-      dbPath,
-      app.getPath('userData'),
-      configManager.get(),
-      (progress) => event.sender.send('google:download-progress', progress),
-      (result) => event.sender.send('google:download-complete', result),
-      googleDownloadWorkerRef,
-      googleDownloadWorkerPath
-    )
-  })
-
-  ipcMain.handle('google:cancel-download', () => handleCancelDownload(googleDownloadWorkerRef))
-
   ipcMain.handle('google:cleanup-download-dir', (_event, { dirPath }: { dirPath: string }) =>
     handleCleanupDownloadDir(dirPath)
   )
+
+  ipcMain.handle('google:create-picker-session', () => handleCreatePickerSession())
+
+  ipcMain.handle('google:poll-picker-session', (_event, { sessionId }: { sessionId: string }) =>
+    handlePollPickerSession(sessionId)
+  )
+
+  ipcMain.handle('google:start-picker-download', (event, { sessionId }: { sessionId: string }) => {
+    const downloadDir = join(app.getPath('userData'), 'picker-staging', `${Date.now()}`)
+    return handleStartPickerDownload(
+      sessionId,
+      downloadDir,
+      (progress) => event.sender.send('google:picker-download-progress', progress),
+      (result) => event.sender.send('google:picker-download-complete', result),
+      pickerWorkerRef,
+      pickerWorkerPath
+    )
+  })
+
+  ipcMain.handle('google:cancel-picker-download', () => handleCancelPickerDownload(pickerWorkerRef))
 
   // --- Library stats IPC ---
 

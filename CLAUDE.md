@@ -81,6 +81,8 @@ The project follows the **Git Flow** branching model:
 4. The user reviews and merges the PR themselves; they will inform Claude once merged
 5. Squash-merge into `develop`
 
+> ⚠ **PRs must always target `develop`**, never `main`. Double-check the base branch in the `gh pr create` command. `main` is reserved for releases only.
+
 **Commit message format**: English, imperative mood (`Add`, `Fix`, `Update`...)
 
 ### Testing
@@ -129,5 +131,5 @@ New imports are always placed in the **monthly folder** for the photo's capture 
 - [ ] UI framework: React vs Svelte (decide during TASK-003)
 - [ ] HEIC conversion: user-configurable JPEG quality or fixed?
 - [ ] Re-index trigger: on startup automatically, or manual only?
-- [ ] Google Photos date filter: remember last import date, or always prompt?
+- [x] Google Photos date filter: **N/A** — Picker API replaces date-based filtering; the user selects photos directly in Google's UI (no programmatic date filter needed).
 - [ ] If two users import the same photo: detected on re-index and reported?

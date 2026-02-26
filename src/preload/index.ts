@@ -73,11 +73,20 @@ const keepicAPI = {
       ipcRenderer.on('import:progress', (_event, data) => callback(data))
     },
 
+    removeProgressListeners: (): void => {
+      ipcRenderer.removeAllListeners('import:progress')
+    },
+
     onComplete: (callback: (r: ImportResult) => void): void => {
       ipcRenderer.on('import:complete', (_event, data) => callback(data))
     },
 
-    cancel: (): Promise<void> => ipcRenderer.invoke('import:cancel')
+    removeCompleteListeners: (): void => {
+      ipcRenderer.removeAllListeners('import:complete')
+    },
+
+    cancel: (): Promise<{ cancelled: true } | { noWorker: true }> =>
+      ipcRenderer.invoke('import:cancel')
   },
   google: {
     getAuthStatus: (): Promise<GoogleAuthStatus> => ipcRenderer.invoke('google:get-auth-status'),
@@ -91,23 +100,36 @@ const keepicAPI = {
     getLastDownloadDate: (): Promise<{ date: string | null }> =>
       ipcRenderer.invoke('google:get-last-download-date'),
 
-    startDownload: (
-      startDate: string
-    ): Promise<{ started: true } | { alreadyRunning: true } | { error: string }> =>
-      ipcRenderer.invoke('google:start-download', { startDate }),
-
-    cancelDownload: (): Promise<void> => ipcRenderer.invoke('google:cancel-download'),
-
-    onDownloadProgress: (callback: (p: GoogleDownloadProgress) => void): void => {
-      ipcRenderer.on('google:download-progress', (_event, data) => callback(data))
-    },
-
-    onDownloadComplete: (callback: (r: GoogleDownloadResult) => void): void => {
-      ipcRenderer.on('google:download-complete', (_event, data) => callback(data))
-    },
-
     cleanupDownloadDir: (dirPath: string): Promise<void> =>
-      ipcRenderer.invoke('google:cleanup-download-dir', { dirPath })
+      ipcRenderer.invoke('google:cleanup-download-dir', { dirPath }),
+
+    createPickerSession: (): Promise<
+      { sessionId: string; pickerUri: string } | { error: string }
+    > => ipcRenderer.invoke('google:create-picker-session'),
+
+    pollPickerSession: (sessionId: string): Promise<{ ready: boolean } | { error: string }> =>
+      ipcRenderer.invoke('google:poll-picker-session', { sessionId }),
+
+    startPickerDownload: (
+      sessionId: string
+    ): Promise<{ started: true } | { alreadyRunning: true } | { error: string }> =>
+      ipcRenderer.invoke('google:start-picker-download', { sessionId }),
+
+    cancelPickerDownload: (): Promise<{ cancelled: true } | { noWorker: true }> =>
+      ipcRenderer.invoke('google:cancel-picker-download'),
+
+    onPickerDownloadProgress: (callback: (p: GoogleDownloadProgress) => void): void => {
+      ipcRenderer.on('google:picker-download-progress', (_event, data) => callback(data))
+    },
+
+    onPickerDownloadComplete: (callback: (r: GoogleDownloadResult) => void): void => {
+      ipcRenderer.on('google:picker-download-complete', (_event, data) => callback(data))
+    },
+
+    removePickerDownloadListeners: (): void => {
+      ipcRenderer.removeAllListeners('google:picker-download-progress')
+      ipcRenderer.removeAllListeners('google:picker-download-complete')
+    }
   }
 }
 

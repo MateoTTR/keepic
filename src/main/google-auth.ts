@@ -18,7 +18,7 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const GOOGLE_SCOPE = [
   'openid',
   'email',
-  'https://www.googleapis.com/auth/photoslibrary.readonly'
+  'https://www.googleapis.com/auth/photospicker.mediaitems.readonly'
 ].join(' ')
 
 // ---------------------------------------------------------------------------
@@ -233,6 +233,16 @@ export async function startOAuthFlow(deps?: GoogleAuthDeps): Promise<{ email: st
     refresh_token: string
     expires_in: number
     id_token: string
+    scope?: string
+  }
+
+  const grantedScopes = (tokenData.scope ?? '').split(' ')
+  if (!grantedScopes.includes('https://www.googleapis.com/auth/photospicker.mediaitems.readonly')) {
+    throw new Error(
+      'Google Photos Picker access was not granted. ' +
+        'Please disconnect and reconnect, ensuring you approve the ' +
+        '"Access items in your Google Photos library" permission when prompted.'
+    )
   }
 
   const email = extractEmailFromIdToken(tokenData.id_token)
@@ -267,6 +277,69 @@ export async function disconnect(deps?: GoogleAuthDeps): Promise<void> {
 }
 
 /**
+ * Tokens returned to the download worker: includes the refresh token and
+ * credentials so the worker can refresh on its own if the access token expires.
+ */
+export interface StoredTokensForDownload {
+  accessToken: string
+  refreshToken: string
+  expiresAt: number
+  credentials: GoogleCredentials
+}
+
+/**
+ * Returns the stored tokens (refreshed if needed) for use by the download worker.
+ * Returns null if not authenticated or if a refresh fails.
+ */
+export async function getStoredTokensForDownload(
+  deps?: GoogleAuthDeps
+): Promise<StoredTokensForDownload | null> {
+  const credentials = deps?.credentials ?? DEFAULT_CREDENTIALS
+  const accessToken = await getValidAccessToken(deps)
+  if (!accessToken) return null
+
+  // keytarGet is intentionally the same dep as used inside getValidAccessToken above:
+  // when getValidAccessToken succeeds the stored token is always readable here.
+  /* v8 ignore next */
+  const keytarGet = deps?.keytarGet ?? defaultKeytarGet
+  const raw = await keytarGet(KEYTAR_SERVICE, KEYTAR_ACCOUNT)
+  /* v8 ignore next */
+  if (!raw) return null
+
+  const stored = JSON.parse(raw) as StoredTokens
+  return {
+    accessToken: stored.accessToken,
+    refreshToken: stored.refreshToken,
+    expiresAt: stored.expiresAt,
+    credentials
+  }
+}
+
+/**
+ * Persists an updated access token (and its expiry) back to the keychain.
+ * Called after the download worker refreshes its token during a long download.
+ */
+export async function updateStoredAccessToken(
+  updatedAccessToken: string,
+  updatedExpiresAt: number,
+  deps?: GoogleAuthDeps
+): Promise<void> {
+  const keytarGet = deps?.keytarGet ?? defaultKeytarGet
+  const keytarSet = deps?.keytarSet ?? defaultKeytarSet
+
+  const raw = await keytarGet(KEYTAR_SERVICE, KEYTAR_ACCOUNT)
+  if (!raw) return
+
+  const stored = JSON.parse(raw) as StoredTokens
+  const updated: StoredTokens = {
+    ...stored,
+    accessToken: updatedAccessToken,
+    expiresAt: updatedExpiresAt
+  }
+  await keytarSet(KEYTAR_SERVICE, KEYTAR_ACCOUNT, JSON.stringify(updated))
+}
+
+/**
  * Returns a valid access token, refreshing if needed.
  * Returns null if not authenticated or refresh fails.
  */
@@ -275,6 +348,7 @@ export async function getValidAccessToken(deps?: GoogleAuthDeps): Promise<string
   const fetchFn = deps?.fetch ?? globalThis.fetch
   const keytarGet = deps?.keytarGet ?? defaultKeytarGet
   const keytarSet = deps?.keytarSet ?? defaultKeytarSet
+  const keytarDelete = deps?.keytarDelete ?? defaultKeytarDelete
 
   const raw = await keytarGet(KEYTAR_SERVICE, KEYTAR_ACCOUNT)
   if (!raw) return null
@@ -312,6 +386,18 @@ export async function getValidAccessToken(deps?: GoogleAuthDeps): Promise<string
   const refreshData = (await refreshResponse.json()) as {
     access_token: string
     expires_in: number
+    scope?: string
+  }
+
+  // If the refresh response includes a scope field, verify Photos access is still granted
+  if (refreshData.scope !== undefined) {
+    const grantedScopes = refreshData.scope.split(' ')
+    if (
+      !grantedScopes.includes('https://www.googleapis.com/auth/photospicker.mediaitems.readonly')
+    ) {
+      await keytarDelete(KEYTAR_SERVICE, KEYTAR_ACCOUNT)
+      return null
+    }
   }
 
   const updatedTokens: StoredTokens = {

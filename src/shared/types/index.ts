@@ -114,8 +114,8 @@ export interface GoogleAuthStatus {
 }
 
 export interface GoogleDownloadProgress {
-  fetched: number // API items returned so far (across all pages)
-  downloaded: number // files written to disk
+  total: number
+  downloaded: number
   currentFile: string | null
 }
 
@@ -124,6 +124,24 @@ export interface GoogleDownloadResult {
   downloaded: number
   errors: Array<{ filename: string; error: string }>
   downloadDir: string // absolute path to the staging folder
+}
+
+export interface PickerMediaItem {
+  id: string
+  baseUrl: string
+  mimeType: string
+  filename: string
+  mediaMetadata: {
+    creationTime: string
+    width: string
+    height: string
+  }
+}
+
+export interface PickerSession {
+  id: string
+  pickerUri: string
+  mediaItemsSet: boolean
 }
 
 export interface DuplicatePhoto {
