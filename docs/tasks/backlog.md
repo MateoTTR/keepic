@@ -101,6 +101,23 @@
 | [TASK-034](TASK-034-picker-ui.md) | Implement Picker UI flow (open browser, polling status, progress, handoff to local import) | `[x]` | 2026-02-25-session-026 |
 | [TASK-035](TASK-035-picker-integration-test.md) | End-to-end integration test + update error messages and user guidance | `[x]` | 2026-02-25-session-027 |
 
+## Phase 8 — Post-release bug fixes (v0.2.x)
+
+> Bugs found during manual testing of v0.2.0 (2026-02-26).
+> Both implemented as feature branches from `develop`, targeting a v0.2.1 release.
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| [TASK-037](TASK-037-fix-heic-double-decode.md) | Fix slow HEIC processing — replace WASM decoder with native ffmpeg | P0 | `[ ]` | — |
+| [TASK-038](TASK-038-fix-picker-list-url.md) | Fix Picker API list URL — sessionId must be a query param, not a path segment | P1 | `[ ]` | — |
+
+### CI fixes (committed directly to `develop`)
+
+| Fix | Description | Commit |
+|---|---|---|
+| `libsecret-1-dev` missing | Install system dep for keytar on Ubuntu 24.04 | `91f91fd` |
+| Release Windows EOF | Transient network error downloading nsis-resources — re-run triggered | — |
+
 ---
 
 ## Upcoming / Not Yet Planned
