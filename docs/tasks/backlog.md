@@ -128,12 +128,20 @@
 
 ---
 
-## Backlog — Refactoring / Performance / Features
+## Phase 9 — Performance (v0.3.x)
 
-> Items identified during session 018.
+> **Dependency**: PERF-001 must be implemented after TASK-037 (ffmpeg-based HEIC).
+> ffmpeg child processes enable true OS-level parallelism; WASM would not benefit.
+
+| ID | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| [PERF-001](PERF-001-concurrent-processing.md) | Concurrent processing — parallelize indexer, planner, executor (N workers = `os.cpus().length`) | P3 | `[ ]` | — |
+
+---
+
+## Backlog — Refactoring / Features
 
 | ID | Title | Type | Priority |
 |---|---|---|---|
-| [REFACTOR-001](REFACTOR-001-heic-phash-simplification.md) | Simplify HEIC pHash workflow — compute pHash directly on raw HEIC, remove temp conversion in planner | Refactor | P2 | `[x]` | 2026-02-26-session-028 |
-| PERF-001 | Indexer concurrent processing — worker pool `os.cpus().length`, estimated ×4–8 speedup on multi-core machines | Perf | P3 |
+| [REFACTOR-001](REFACTOR-001-heic-phash-simplification.md) | Simplify HEIC pHash workflow — superseded by TASK-037 | Refactor | `[x]` |
 | FEAT-001 | Side-by-side duplicate comparison viewer with metadata and "Reveal in Explorer/Finder" | Feature | P4 |
