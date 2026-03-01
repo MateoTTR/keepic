@@ -62,7 +62,7 @@ function makeSpawnMock(
 
 /** SpawnFn that emits an 'error' event instead of 'close'. */
 function makeSpawnErrorMock(err: Error): SpawnFn {
-  return (_cmd: string, _args: string[]): EventEmitter => {
+  return (): EventEmitter => {
     const emitter = new EventEmitter()
     setImmediate(() => emitter.emit('error', err))
     return emitter
