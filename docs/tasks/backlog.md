@@ -101,6 +101,23 @@
 | [TASK-034](TASK-034-picker-ui.md) | Implement Picker UI flow (open browser, polling status, progress, handoff to local import) | `[x]` | 2026-02-25-session-026 |
 | [TASK-035](TASK-035-picker-integration-test.md) | End-to-end integration test + update error messages and user guidance | `[x]` | 2026-02-25-session-027 |
 
+## Phase 8 — Post-release bug fixes (v0.2.x)
+
+> Bugs found during manual testing of v0.2.0 (2026-02-26).
+> Both implemented as feature branches from `develop`, targeting a v0.2.1 release.
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| [TASK-037](TASK-037-fix-heic-double-decode.md) | Fix slow HEIC processing — replace WASM decoder with native ffmpeg | P0 | `[x]` | 2026-03-01-session-031 |
+| [TASK-038](TASK-038-fix-picker-list-url.md) | Fix Picker API list URL — sessionId must be a query param, not a path segment | P1 | `[x]` | 2026-03-01-session-030 |
+
+### CI fixes (committed directly to `develop`)
+
+| Fix | Description | Commit |
+|---|---|---|
+| `libsecret-1-dev` missing | Install system dep for keytar on Ubuntu 24.04 | `91f91fd` |
+| Release Windows EOF | Transient network error downloading nsis-resources — re-run triggered | — |
+
 ---
 
 ## Upcoming / Not Yet Planned
@@ -111,12 +128,20 @@
 
 ---
 
-## Backlog — Refactoring / Performance / Features
+## Phase 9 — Performance (v0.3.x)
 
-> Items identified during session 018.
+> **Dependency**: PERF-001 must be implemented after TASK-037 (ffmpeg-based HEIC).
+> ffmpeg child processes enable true OS-level parallelism; WASM would not benefit.
+
+| ID | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| [PERF-001](PERF-001-concurrent-processing.md) | Concurrent processing — parallelize indexer, planner, executor (N workers = `os.cpus().length`) | P3 | `[ ]` | — |
+
+---
+
+## Backlog — Refactoring / Features
 
 | ID | Title | Type | Priority |
 |---|---|---|---|
-| [REFACTOR-001](REFACTOR-001-heic-phash-simplification.md) | Simplify HEIC pHash workflow — compute pHash directly on raw HEIC, remove temp conversion in planner | Refactor | P2 | `[x]` | 2026-02-26-session-028 |
-| PERF-001 | Indexer concurrent processing — worker pool `os.cpus().length`, estimated ×4–8 speedup on multi-core machines | Perf | P3 |
+| [REFACTOR-001](REFACTOR-001-heic-phash-simplification.md) | Simplify HEIC pHash workflow — superseded by TASK-037 | Refactor | `[x]` |
 | FEAT-001 | Side-by-side duplicate comparison viewer with metadata and "Reveal in Explorer/Finder" | Feature | P4 |

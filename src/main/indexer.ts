@@ -2,7 +2,8 @@ import { readdirSync, statSync, type Dirent } from 'fs'
 import { join, basename, extname } from 'path'
 import { isYearFolder } from '../shared/library-path'
 import { readExifDate, defaultExifLoader, type ExifLoader } from './exif'
-import { defaultPhashComputer, type PhashComputer } from './phash'
+import { type PhashComputer } from './phash'
+import { createUniversalPhashComputer, getFfmpegPath } from './heic'
 import type { KeePicDatabase } from './db/database'
 import type { IndexProgress, IndexResult } from '../shared/types'
 
@@ -185,7 +186,7 @@ export async function runIndexer(
   options: RunIndexerOptions = {}
 ): Promise<IndexResult> {
   const loadExif = options.loadExif ?? defaultExifLoader
-  const computePhash = options.computePhash ?? defaultPhashComputer
+  const computePhash = options.computePhash ?? createUniversalPhashComputer(getFfmpegPath())
 
   const relativePaths = scanLibraryFiles(libraryPath)
   const total = relativePaths.length

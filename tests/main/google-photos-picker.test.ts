@@ -199,6 +199,18 @@ describe('listPickerMediaItems', () => {
     expect(result.items).toEqual([])
   })
 
+  it('calls the correct endpoint with sessionId as a query param', async () => {
+    const deps = mockFetch(200, { mediaItems: [] })
+
+    await listPickerMediaItems('session-abc', 'token-123', undefined, deps)
+
+    const fetchFn = deps.fetch as ReturnType<typeof vi.fn>
+    const calledUrl = fetchFn.mock.calls[0][0] as string
+    expect(calledUrl).toBe(
+      'https://photospicker.googleapis.com/v1/mediaItems?sessionId=session-abc&pageSize=100'
+    )
+  })
+
   it('passes pageSize=100 and pageToken as query params', async () => {
     const deps = mockFetch(200, { mediaItems: [] })
 
@@ -206,8 +218,10 @@ describe('listPickerMediaItems', () => {
 
     const fetchFn = deps.fetch as ReturnType<typeof vi.fn>
     const calledUrl = fetchFn.mock.calls[0][0] as string
+    expect(calledUrl).toContain('sessionId=session-abc')
     expect(calledUrl).toContain('pageSize=100')
     expect(calledUrl).toContain('pageToken=next-page-token')
+    expect(calledUrl).not.toContain('/sessions/')
   })
 
   it('does not include pageToken param when not provided', async () => {
@@ -217,6 +231,7 @@ describe('listPickerMediaItems', () => {
 
     const fetchFn = deps.fetch as ReturnType<typeof vi.fn>
     const calledUrl = fetchFn.mock.calls[0][0] as string
+    expect(calledUrl).toContain('sessionId=session-abc')
     expect(calledUrl).toContain('pageSize=100')
     expect(calledUrl).not.toContain('pageToken')
   })
