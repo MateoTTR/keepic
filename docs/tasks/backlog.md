@@ -109,7 +109,7 @@
 | # | Title | Priority | Status | Session |
 |---|---|---|---|---|
 | [TASK-037](TASK-037-fix-heic-double-decode.md) | Fix slow HEIC processing — replace WASM decoder with native ffmpeg | P0 | `[ ]` | — |
-| [TASK-038](TASK-038-fix-picker-list-url.md) | Fix Picker API list URL — sessionId must be a query param, not a path segment | P1 | `[ ]` | — |
+| [TASK-038](TASK-038-fix-picker-list-url.md) | Fix Picker API list URL — sessionId must be a query param, not a path segment | P1 | `[x]` | 2026-03-01-session-030 |
 
 ### CI fixes (committed directly to `develop`)
 
