@@ -6,6 +6,7 @@ import { KeePicDatabase } from '../../src/main/db/database'
 import { scanSourceFiles, buildImportPlan, executeImportPlan } from '../../src/main/importer'
 import type { ExifLoader } from '../../src/main/exif'
 import type { PhashComputer } from '../../src/main/phash'
+import type { HeicConverter } from '../../src/main/heic'
 import type { AppConfig, ImportPlan } from '../../src/shared/types'
 
 // ---------------------------------------------------------------------------
@@ -306,46 +307,73 @@ describe('buildImportPlan', () => {
     const plan = await buildImportPlan(sourceDir, libraryDir, db, heicConversionConfig, () => {}, {
       loadExif: nullExifLoader,
       computePhash: nullPhashComputer,
-      computeHeicPhash: nullPhashComputer
+      convertHeic: async () => {},
+      stagingDir: join(sourceDir, 'staging'),
+      mkdirp: () => {}
     })
 
     expect(plan.entries[0].destinationRelativePath).toMatch(/IMG_1234\.jpg$/)
   })
 
-  it('computes pHash via computeHeicPhash (not computePhash) when conversion is enabled', async () => {
+  it('stages HEIC via convertHeic and computes pHash from staged JPEG when conversion is enabled', async () => {
     touch(join(sourceDir, 'IMG.heic'))
 
-    let heicPhashCalledWith: string | null = null
+    const stagingDir = mkdtempSync(join(tmpdir(), 'keepic-staging-test-'))
+    let convertCalledWith: string | null = null
+    let phashCalledWith: string | null = null
+
+    const mockConvert: HeicConverter = async (src, dest) => {
+      convertCalledWith = src
+      writeFileSync(dest, 'fake-jpeg')
+    }
+
+    const plan = await buildImportPlan(sourceDir, libraryDir, db, heicConversionConfig, () => {}, {
+      loadExif: nullExifLoader,
+      convertHeic: mockConvert,
+      computePhash: async (fp) => {
+        phashCalledWith = fp
+        return { phash: 'staged-phash', width: 100, height: 100 }
+      },
+      stagingDir
+    })
+
+    // convertHeic called on the HEIC source
+    expect(convertCalledWith).toBe(join(sourceDir, 'IMG.heic'))
+    // computePhash called on the staged JPEG (inside stagingDir)
+    expect(phashCalledWith).not.toBeNull()
+    expect(phashCalledWith).toContain(stagingDir)
+    expect(plan.entries[0].phash).toBe('staged-phash')
+    // stagedPath is set
+    expect(plan.entries[0].stagedPath).toBeTruthy()
+    expect(plan.entries[0].stagedPath).toContain(stagingDir)
+
+    rmSync(stagingDir, { recursive: true, force: true })
+  })
+
+  it('sets pHash to null and stagedPath to undefined when convertHeic fails', async () => {
+    touch(join(sourceDir, 'IMG.heic'))
+
     let regularPhashCalled = false
 
     const plan = await buildImportPlan(sourceDir, libraryDir, db, heicConversionConfig, () => {}, {
       loadExif: nullExifLoader,
-      computeHeicPhash: async (filePath) => {
-        heicPhashCalledWith = filePath
-        return { phash: 'heic-phash', width: 100, height: 100 }
+      convertHeic: async () => {
+        throw new Error('ffmpeg failed')
       },
       computePhash: async () => {
         regularPhashCalled = true
-        return null
-      }
+        return { phash: 'should-not-matter', width: 0, height: 0 }
+      },
+      stagingDir: join(sourceDir, 'staging'),
+      mkdirp: () => {}
     })
 
-    expect(heicPhashCalledWith).toBe(join(sourceDir, 'IMG.heic'))
-    expect(regularPhashCalled).toBe(false)
-    expect(plan.entries[0].phash).toBe('heic-phash')
-  })
-
-  it('sets pHash to null when computeHeicPhash returns null', async () => {
-    touch(join(sourceDir, 'IMG.heic'))
-
-    const plan = await buildImportPlan(sourceDir, libraryDir, db, heicConversionConfig, () => {}, {
-      loadExif: nullExifLoader,
-      computeHeicPhash: nullPhashComputer,
-      computePhash: async () => ({ phash: 'should-not-be-used', width: 0, height: 0 })
-    })
-
+    // Fallback: no stagedPath, pHash is null (staging failed)
+    expect(plan.entries[0].stagedPath).toBeUndefined()
     expect(plan.entries[0].phash).toBeNull()
     expect(plan.entries[0].status).toBe('ready')
+    // computePhash is NOT called when staging fails (no staged file to compute from)
+    expect(regularPhashCalled).toBe(false)
   })
 
   it('keeps HEIC extension when conversion is disabled', async () => {
@@ -459,6 +487,7 @@ describe('executeImportPlan', () => {
       height: 480,
       fileSize: 12345,
       status: 'ready',
+      stagedPath: undefined,
       ...overrides
     }
   }
@@ -838,5 +867,235 @@ describe('executeImportPlan', () => {
     expect(copied).toHaveLength(1)
     const photos = getAllPhotos(db)
     expect(photos[0].path).toBe('2024/2024.06/photo_1.jpg')
+  })
+
+  // ---------------------------------------------------------------------------
+  // stagedPath handling
+  // ---------------------------------------------------------------------------
+
+  it('moves stagedPath directly to library instead of converting when stagedPath is set', async () => {
+    // Create a real staged file
+    const stagedFile = join(tempDir, 'staged.jpg')
+    writeFileSync(stagedFile, 'fake-jpeg')
+
+    let convertCalled = false
+    let copyCalled = false
+    const moved: string[] = []
+
+    const plan = makePlan([
+      readyEntry({
+        sourcePath: '/source/IMG.heic',
+        destinationRelativePath: '2024/2024.06/IMG.jpg',
+        stagedPath: stagedFile
+      })
+    ])
+
+    await executeImportPlan(plan, libraryDir, tempDir, db, heicConversionConfig, noop, {
+      convertHeic: async () => {
+        convertCalled = true
+      },
+      copyFile: () => {
+        copyCalled = true
+      },
+      moveFile: (src) => {
+        moved.push(src)
+      },
+      mkdirp: noop,
+      statFile: mockStat,
+      rmTempDir: noop,
+      rmStagedFile: noop
+    })
+
+    // Convert and copy must NOT be called
+    expect(convertCalled).toBe(false)
+    expect(copyCalled).toBe(false)
+    // Move must be called with the staged path
+    expect(moved).toHaveLength(1)
+    expect(moved[0]).toBe(stagedFile)
+
+    const photos = getAllPhotos(db)
+    expect(photos[0].path).toBe('2024/2024.06/IMG.jpg')
+    expect(photos[0].phash).toBe('abc123')
+  })
+
+  it('cleans up staged files in finally regardless of move success', async () => {
+    const stagedFile = join(tempDir, 'staged-cleanup.jpg')
+    writeFileSync(stagedFile, 'fake-jpeg')
+
+    const deletedFiles: string[] = []
+    const plan = makePlan([
+      readyEntry({
+        sourcePath: '/source/IMG.heic',
+        destinationRelativePath: '2024/2024.06/IMG.jpg',
+        stagedPath: stagedFile
+      })
+    ])
+
+    await executeImportPlan(plan, libraryDir, tempDir, db, heicConversionConfig, noop, {
+      moveFile: noop,
+      mkdirp: noop,
+      statFile: mockStat,
+      rmTempDir: noop,
+      rmStagedFile: (p) => {
+        deletedFiles.push(p)
+      }
+    })
+
+    expect(deletedFiles).toContain(stagedFile)
+  })
+
+  it('cleans up staged file in finally when move throws', async () => {
+    const stagedFile = join(tempDir, 'staged-error.jpg')
+    writeFileSync(stagedFile, 'fake-jpeg')
+
+    const deletedFiles: string[] = []
+    const plan = makePlan([
+      readyEntry({
+        sourcePath: '/source/IMG.heic',
+        destinationRelativePath: '2024/2024.06/IMG.jpg',
+        stagedPath: stagedFile
+      })
+    ])
+
+    const result = await executeImportPlan(
+      plan,
+      libraryDir,
+      tempDir,
+      db,
+      heicConversionConfig,
+      noop,
+      {
+        moveFile: () => {
+          throw new Error('move failed')
+        },
+        mkdirp: noop,
+        statFile: mockStat,
+        rmTempDir: noop,
+        rmStagedFile: (p) => {
+          deletedFiles.push(p)
+        }
+      }
+    )
+
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0].error).toBe('move failed')
+    expect(deletedFiles).toContain(stagedFile)
+  })
+
+  it('cleans up all remaining staged files on cancellation', async () => {
+    const staged1 = join(tempDir, 'staged-cancel-1.jpg')
+    const staged2 = join(tempDir, 'staged-cancel-2.jpg')
+    writeFileSync(staged1, 'fake-jpeg-1')
+    writeFileSync(staged2, 'fake-jpeg-2')
+
+    const deletedFiles: string[] = []
+    let cancelAfter = 0
+    const plan = makePlan([
+      readyEntry({
+        sourcePath: '/source/A.heic',
+        destinationRelativePath: '2024/2024.06/A.jpg',
+        stagedPath: staged1
+      }),
+      readyEntry({
+        sourcePath: '/source/B.heic',
+        destinationRelativePath: '2024/2024.06/B.jpg',
+        stagedPath: staged2
+      })
+    ])
+
+    const result = await executeImportPlan(
+      plan,
+      libraryDir,
+      tempDir,
+      db,
+      heicConversionConfig,
+      noop,
+      {
+        moveFile: noop,
+        mkdirp: noop,
+        statFile: mockStat,
+        rmTempDir: noop,
+        rmStagedFile: (p) => {
+          deletedFiles.push(p)
+        },
+        isCancelled: () => {
+          cancelAfter++
+          return cancelAfter > 1 // cancel before second file
+        }
+      }
+    )
+
+    expect(result.status).toBe('cancelled')
+    // Both staged files must be cleaned up (even the one not processed)
+    expect(deletedFiles).toContain(staged1)
+    expect(deletedFiles).toContain(staged2)
+  })
+
+  it('does not call rmStagedFile for entries without stagedPath', async () => {
+    let rmStagedCalled = false
+    const plan = makePlan([readyEntry({ stagedPath: undefined })])
+
+    await executeImportPlan(plan, libraryDir, tempDir, db, baseConfig, noop, {
+      copyFile: noop,
+      moveFile: noop,
+      mkdirp: noop,
+      statFile: mockStat,
+      rmTempDir: noop,
+      rmStagedFile: () => {
+        rmStagedCalled = true
+      }
+    })
+
+    expect(rmStagedCalled).toBe(false)
+  })
+
+  it('ignores exceptions thrown by rmStagedFile during cleanup', async () => {
+    const stagedFile = join(tempDir, 'staged-rmthrow.jpg')
+    writeFileSync(stagedFile, 'fake-jpeg')
+
+    const plan = makePlan([
+      readyEntry({
+        sourcePath: '/source/IMG.heic',
+        destinationRelativePath: '2024/2024.06/IMG.jpg',
+        stagedPath: stagedFile
+      })
+    ])
+
+    // rmStagedFile throws — should be silently ignored, plan still completes
+    await expect(
+      executeImportPlan(plan, libraryDir, tempDir, db, heicConversionConfig, noop, {
+        moveFile: noop,
+        mkdirp: noop,
+        statFile: mockStat,
+        rmTempDir: noop,
+        rmStagedFile: () => {
+          throw new Error('delete failed')
+        }
+      })
+    ).resolves.toMatchObject({ status: 'completed' })
+  })
+
+  it('uses default rmStagedFile (rmSync with force) when not injected', async () => {
+    const stagedFile = join(tempDir, 'staged-default-rm.jpg')
+    writeFileSync(stagedFile, 'fake-jpeg')
+
+    const plan = makePlan([
+      readyEntry({
+        sourcePath: '/source/IMG.heic',
+        destinationRelativePath: '2024/2024.06/IMG.jpg',
+        stagedPath: stagedFile
+      })
+    ])
+
+    // rmStagedFile NOT injected → default uses rmSync(p, { force: true })
+    await executeImportPlan(plan, libraryDir, tempDir, db, heicConversionConfig, noop, {
+      moveFile: noop,
+      mkdirp: noop,
+      statFile: mockStat,
+      rmTempDir: noop
+    })
+
+    // The default rmStagedFile should have deleted the staged file
+    expect(existsSync(stagedFile)).toBe(false)
   })
 })

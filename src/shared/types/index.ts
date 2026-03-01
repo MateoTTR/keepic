@@ -86,6 +86,8 @@ export interface ImportPlanEntry {
   duplicateOf?: string
   originalDestination?: string
   errorMessage?: string
+  /** Absolute path to a pre-staged JPEG (set by the planner for HEIC files). */
+  stagedPath?: string
 }
 
 export interface ImportPlan {
