@@ -100,18 +100,15 @@ export async function listPickerMediaItems(
   /* v8 ignore next 1 */
   const fetchFn = deps?.fetch ?? globalThis.fetch
 
-  const params = new URLSearchParams({ pageSize: '100' })
+  const params = new URLSearchParams({ sessionId, pageSize: '100' })
   if (pageToken) {
     params.set('pageToken', pageToken)
   }
 
-  const response = await fetchFn(
-    `${PICKER_API_BASE}/sessions/${sessionId}/mediaItems?${params.toString()}`,
-    {
-      method: 'GET',
-      headers: authHeaders(accessToken)
-    }
-  )
+  const response = await fetchFn(`${PICKER_API_BASE}/mediaItems?${params.toString()}`, {
+    method: 'GET',
+    headers: authHeaders(accessToken)
+  })
 
   if (!response.ok) {
     return handleErrorResponse(response, 'Failed to list picker media items')
