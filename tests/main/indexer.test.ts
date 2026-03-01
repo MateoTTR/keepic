@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, utimesSync, chmodSync } from 'fs'
-import { join } from 'path'
+import { join, extname } from 'path'
 import { tmpdir } from 'os'
 import { KeePicDatabase } from '../../src/main/db/database'
 import { scanLibraryFiles, runIndexer } from '../../src/main/indexer'
@@ -40,6 +40,27 @@ const mockPhashComputer: PhashComputer = async (filePath: string) => ({
   width: 100,
   height: 100
 })
+
+/**
+ * Mock PhashComputer that simulates HEIC-aware behaviour:
+ * - .heic/.heif files return a non-null pHash (as createUniversalPhashComputer would)
+ * - all other files return a regular pHash
+ */
+const heicAwarePhashComputer: PhashComputer = async (filePath: string) => {
+  const ext = extname(filePath).toLowerCase()
+  if (ext === '.heic' || ext === '.heif') {
+    return {
+      phash: 'heic' + Buffer.from(filePath).toString('hex').slice(0, 12),
+      width: 4032,
+      height: 3024
+    }
+  }
+  return {
+    phash: Buffer.from(filePath).toString('hex').slice(0, 16).padEnd(16, '0'),
+    width: 100,
+    height: 100
+  }
+}
 
 /** Mock PhashComputer that always returns null (e.g. unsupported format). */
 const nullPhashComputer: PhashComputer = async () => null
@@ -358,5 +379,28 @@ describe('runIndexer', () => {
       .prepare('SELECT source FROM photos WHERE path = ?')
       .get('2025/2025.01/photo.jpg') as { source: string }
     expect(row.source).toBe('google_photos')
+  })
+
+  it('stores a non-null pHash for HEIC files when using a HEIC-aware computePhash', async () => {
+    // With createUniversalPhashComputer as the default, HEIC files are routed
+    // through ffmpeg → temp JPEG → native sharp, resulting in a real pHash.
+    // This test verifies that the indexer correctly stores a non-null pHash for
+    // HEIC files when a HEIC-aware computer is injected.
+    buildLibrary(libraryRoot, { '2025/2025.06': ['IMG_1234.heic'] })
+    await runIndexer(libraryRoot, db, () => {}, {
+      loadExif: nullExifLoader,
+      computePhash: heicAwarePhashComputer
+    })
+
+    const row = db.db
+      .prepare('SELECT phash, width, height FROM photos WHERE path = ?')
+      .get('2025/2025.06/IMG_1234.heic') as {
+      phash: string | null
+      width: number | null
+      height: number | null
+    }
+    expect(row.phash).not.toBeNull()
+    expect(row.width).toBe(4032)
+    expect(row.height).toBe(3024)
   })
 })

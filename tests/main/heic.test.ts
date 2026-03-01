@@ -1,36 +1,24 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { mkdtempSync, rmSync, existsSync, statSync } from 'fs'
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import sharp from 'sharp'
+import { EventEmitter } from 'events'
 import {
   getHeicCandidatePaths,
   isLivePhotoMov,
   convertHeicToJpeg,
   createHeicConverter,
-  createHeicPhashComputer,
-  type HeicPixelDecoder
+  getFfmpegPath,
+  createUniversalPhashComputer,
+  type SpawnFn
 } from '../../src/main/heic'
+import type { PhashComputer, PhashResult } from '../../src/main/phash'
 
 // ---------------------------------------------------------------------------
 // Test fixtures
 // ---------------------------------------------------------------------------
 
 let tmpDir: string
-
-/** Creates a mock HeicPixelDecoder that returns RGBA pixels of the given size. */
-function createMockDecoder(width = 8, height = 8): HeicPixelDecoder {
-  return async () => {
-    const data = new Uint8ClampedArray(width * height * 4)
-    for (let i = 0; i < data.length; i += 4) {
-      data[i] = 120 // R
-      data[i + 1] = 80 // G
-      data[i + 2] = 200 // B
-      data[i + 3] = 255 // A
-    }
-    return { data, width, height }
-  }
-}
 
 beforeAll(() => {
   tmpDir = mkdtempSync(join(tmpdir(), 'keepic-heic-test-'))
@@ -39,6 +27,47 @@ beforeAll(() => {
 afterAll(() => {
   rmSync(tmpDir, { recursive: true, force: true })
 })
+
+// ---------------------------------------------------------------------------
+// Helpers: spawn mocks
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates a SpawnFn that exits with `exitCode` (pass `null` to simulate a null close code)
+ * and optionally writes `fileContent` to the destination path (last argument in the args array).
+ */
+function makeSpawnMock(
+  exitCode: number | null,
+  fileContent?: Buffer,
+  capturedArgs?: { cmd: string; args: string[] }[]
+): SpawnFn {
+  return (cmd: string, args: string[]): EventEmitter => {
+    if (capturedArgs) capturedArgs.push({ cmd, args })
+    const emitter = new EventEmitter()
+    setImmediate(() => {
+      if (fileContent !== undefined) {
+        // Write content to the destination (last arg, before any trailing flags)
+        // For converter: args = ['-i', src, '-q:v', quality, dest, '-y']  → dest = args[4]
+        // For phash computer: args = ['-i', src, '-frames:v', '1', dest, '-y'] → dest = args[4]
+        const destIndex = args.indexOf('-y') - 1
+        if (destIndex >= 0) {
+          writeFileSync(args[destIndex], fileContent)
+        }
+      }
+      emitter.emit('close', exitCode)
+    })
+    return emitter
+  }
+}
+
+/** SpawnFn that emits an 'error' event instead of 'close'. */
+function makeSpawnErrorMock(err: Error): SpawnFn {
+  return (_cmd: string, _args: string[]): EventEmitter => {
+    const emitter = new EventEmitter()
+    setImmediate(() => emitter.emit('error', err))
+    return emitter
+  }
+}
 
 // ---------------------------------------------------------------------------
 // getHeicCandidatePaths (pure)
@@ -115,6 +144,96 @@ describe('isLivePhotoMov', () => {
 })
 
 // ---------------------------------------------------------------------------
+// getFfmpegPath
+// ---------------------------------------------------------------------------
+
+describe('getFfmpegPath', () => {
+  it('returns a non-empty string using the real ffmpeg-static', () => {
+    const path = getFfmpegPath()
+    expect(typeof path).toBe('string')
+    expect(path.length).toBeGreaterThan(0)
+  })
+
+  it('rewrites app.asar to app.asar.unpacked in the path', () => {
+    const asarPath = '/resources/app.asar/node_modules/ffmpeg-static/ffmpeg'
+    const result = getFfmpegPath(() => asarPath)
+    expect(result).toBe('/resources/app.asar.unpacked/node_modules/ffmpeg-static/ffmpeg')
+  })
+
+  it('is a no-op for paths that do not contain app.asar (dev mode)', () => {
+    const devPath = '/home/user/project/node_modules/ffmpeg-static/ffmpeg'
+    const result = getFfmpegPath(() => devPath)
+    expect(result).toBe(devPath)
+  })
+
+  it('throws when ffmpeg-static returns null (platform not supported)', () => {
+    expect(() => getFfmpegPath(() => null)).toThrow(
+      'ffmpeg-static: no binary found for the current platform'
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// createHeicConverter
+// ---------------------------------------------------------------------------
+
+describe('createHeicConverter', () => {
+  it('calls ffmpeg with the correct arguments', async () => {
+    const captured: { cmd: string; args: string[] }[] = []
+    const spawnMock = makeSpawnMock(0, Buffer.from('jpeg'), captured)
+    const converter = createHeicConverter('/path/to/ffmpeg', spawnMock)
+    const dest = join(tmpDir, 'converter-args-out.jpg')
+
+    await converter('/source/photo.heic', dest, 90)
+
+    expect(captured).toHaveLength(1)
+    expect(captured[0].cmd).toBe('/path/to/ffmpeg')
+    expect(captured[0].args).toContain('-i')
+    expect(captured[0].args).toContain('/source/photo.heic')
+    expect(captured[0].args).toContain('-q:v')
+    expect(captured[0].args).toContain(dest)
+    expect(captured[0].args).toContain('-y')
+  })
+
+  it('passes quality as a string argument to -q:v', async () => {
+    const captured: { cmd: string; args: string[] }[] = []
+    const spawnMock = makeSpawnMock(0, Buffer.from('jpeg'), captured)
+    const converter = createHeicConverter('/ffmpeg', spawnMock)
+    const dest = join(tmpDir, 'quality-arg-out.jpg')
+
+    await converter('/source/photo.heic', dest, 75)
+
+    const qvIndex = captured[0].args.indexOf('-q:v')
+    expect(qvIndex).toBeGreaterThanOrEqual(0)
+    expect(captured[0].args[qvIndex + 1]).toBe('75')
+  })
+
+  it('resolves when ffmpeg exits with code 0', async () => {
+    const dest = join(tmpDir, 'resolve-out.jpg')
+    const converter = createHeicConverter('/ffmpeg', makeSpawnMock(0, Buffer.from('ok')))
+    await expect(converter('/source/photo.heic', dest, 90)).resolves.toBeUndefined()
+  })
+
+  it('rejects when ffmpeg exits with a non-zero exit code', async () => {
+    const dest = join(tmpDir, 'nonzero-out.jpg')
+    const converter = createHeicConverter('/ffmpeg', makeSpawnMock(1))
+    await expect(converter('/source/photo.heic', dest, 90)).rejects.toThrow(/ffmpeg exited/)
+  })
+
+  it('rejects with "null" code label when close event fires with null code', async () => {
+    const dest = join(tmpDir, 'null-code-out.jpg')
+    const converter = createHeicConverter('/ffmpeg', makeSpawnMock(null))
+    await expect(converter('/source/photo.heic', dest, 90)).rejects.toThrow('code null')
+  })
+
+  it('rejects when the spawn emits an error event', async () => {
+    const dest = join(tmpDir, 'spawn-error-out.jpg')
+    const converter = createHeicConverter('/ffmpeg', makeSpawnErrorMock(new Error('spawn failed')))
+    await expect(converter('/source/photo.heic', dest, 90)).rejects.toThrow('spawn failed')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // convertHeicToJpeg
 // ---------------------------------------------------------------------------
 
@@ -130,185 +249,266 @@ describe('convertHeicToJpeg', () => {
   })
 
   it('uses defaultHeicConverter when no converter is provided', async () => {
-    // Write a fake "HEIC" file — defaultHeicConverter uses the real heic-decode
-    // which validates HEIC magic bytes, so this will throw TypeError.
-    // This test verifies the default parameter wiring (falls back to defaultHeicConverter).
+    // defaultHeicConverter uses real ffmpeg; passing a non-HEIC file should cause ffmpeg
+    // to exit non-zero → the promise rejects. This verifies the default parameter wiring.
     const fakeHeic = join(tmpDir, 'not-a-real.heic')
     const outputJpeg = join(tmpDir, 'output-default.jpg')
-    // Write some non-HEIC bytes to trigger heic-decode's type check
-    const { writeFileSync } = await import('fs')
     writeFileSync(fakeHeic, Buffer.alloc(32, 0))
     await expect(convertHeicToJpeg(fakeHeic, outputJpeg, 80)).rejects.toThrow()
   })
 })
 
 // ---------------------------------------------------------------------------
-// createHeicConverter
+// createUniversalPhashComputer
 // ---------------------------------------------------------------------------
 
-describe('createHeicConverter', () => {
-  it('decodes HEIC pixels then encodes a valid JPEG file', async () => {
-    const destPath = join(tmpDir, 'converter-out.jpg')
-    const srcPath = join(tmpDir, 'fake-source.heic')
-    const fakeContent = Buffer.from('fake-heic-content')
-    const { writeFileSync } = await import('fs')
-    writeFileSync(srcPath, fakeContent)
-
-    const converter = createHeicConverter(createMockDecoder(8, 8))
-    await converter(srcPath, destPath, 75)
-
-    expect(existsSync(destPath)).toBe(true)
-    const meta = await sharp(destPath).metadata()
-    expect(meta.format).toBe('jpeg')
-    expect(meta.width).toBe(8)
-    expect(meta.height).toBe(8)
+describe('createUniversalPhashComputer', () => {
+  const mockSharpPhash: PhashComputer = async (filePath: string): Promise<PhashResult> => ({
+    phash: Buffer.from(filePath).toString('hex').slice(0, 16).padEnd(16, '0'),
+    width: 100,
+    height: 80
   })
 
-  it('passes the file buffer to the decoder', async () => {
-    const srcPath = join(tmpDir, 'pass-buffer.heic')
-    const destPath = join(tmpDir, 'pass-buffer-out.jpg')
-    const content = Buffer.from('test-heic-bytes-123')
-    const { writeFileSync } = await import('fs')
-    writeFileSync(srcPath, content)
+  it('routes non-HEIC files directly through computeSharpPhash (no ffmpeg)', async () => {
+    let spawnCalled = false
+    const spawnMock: SpawnFn = (): EventEmitter => {
+      spawnCalled = true
+      const e = new EventEmitter()
+      setImmediate(() => e.emit('close', 0))
+      return e
+    }
+    const computer = createUniversalPhashComputer('/ffmpeg', {
+      spawnFn: spawnMock,
+      computeSharpPhash: mockSharpPhash
+    })
 
-    let receivedBuffer: Buffer | ArrayBuffer | Uint8Array | undefined
-    const trackingDecoder: HeicPixelDecoder = async (opts) => {
-      receivedBuffer = opts.buffer
-      const data = new Uint8ClampedArray(4 * 4 * 4).fill(128)
-      return { data, width: 4, height: 4 }
+    const result = await computer('/photos/photo.jpg')
+
+    expect(spawnCalled).toBe(false)
+    expect(result).not.toBeNull()
+    expect(result!.width).toBe(100)
+  })
+
+  it('routes .heic files through ffmpeg → temp JPEG → pHash', async () => {
+    const tempFile = join(tmpDir, 'phash-heic-out.jpg')
+    let sharpCalledWith: string | null = null
+
+    const spawnMock = makeSpawnMock(0, Buffer.from('fake-jpeg'))
+    const trackingSharpPhash: PhashComputer = async (fp) => {
+      sharpCalledWith = fp
+      return { phash: 'aabbccdd11223344', width: 4032, height: 3024 }
     }
 
-    const converter = createHeicConverter(trackingDecoder)
-    await converter(srcPath, destPath, 80)
+    const computer = createUniversalPhashComputer('/ffmpeg', {
+      spawnFn: spawnMock,
+      computeSharpPhash: trackingSharpPhash,
+      generateTempPath: () => tempFile
+    })
 
-    expect(Buffer.isBuffer(receivedBuffer)).toBe(true)
-    expect((receivedBuffer as Buffer).toString()).toBe('test-heic-bytes-123')
+    const result = await computer('/photos/IMG_1234.heic')
+
+    expect(sharpCalledWith).toBe(tempFile)
+    expect(result).not.toBeNull()
+    expect(result!.phash).toBe('aabbccdd11223344')
+    expect(result!.width).toBe(4032)
   })
 
-  it('respects the quality parameter (lower quality → smaller file)', async () => {
-    const highQualityPath = join(tmpDir, 'high-quality.jpg')
-    const lowQualityPath = join(tmpDir, 'low-quality.jpg')
-    const srcPath = join(tmpDir, 'quality-source.heic')
-    const { writeFileSync } = await import('fs')
-    writeFileSync(srcPath, Buffer.from('dummy'))
-
-    // Use a larger image so quality difference is measurable
-    const converter = createHeicConverter(createMockDecoder(200, 200))
-    await converter(srcPath, highQualityPath, 95)
-    await converter(srcPath, lowQualityPath, 1)
-
-    const highSize = statSync(highQualityPath).size
-    const lowSize = statSync(lowQualityPath).size
-    expect(highSize).toBeGreaterThan(lowSize)
-  })
-
-  it('throws when the source file does not exist', async () => {
-    const converter = createHeicConverter(createMockDecoder())
-    await expect(
-      converter('/nonexistent/photo.heic', join(tmpDir, 'out.jpg'), 90)
-    ).rejects.toThrow()
-  })
-
-  it('throws when the decoder rejects', async () => {
-    const srcPath = join(tmpDir, 'decode-fail.heic')
-    const { writeFileSync } = await import('fs')
-    writeFileSync(srcPath, Buffer.from('bad'))
-
-    const failingDecoder: HeicPixelDecoder = async () => {
-      throw new Error('HEIF processing error')
+  it('routes .heif files through ffmpeg (same as .heic)', async () => {
+    let spawnCalled = false
+    const spawnMock: SpawnFn = (): EventEmitter => {
+      spawnCalled = true
+      const e = new EventEmitter()
+      setImmediate(() => e.emit('close', 0))
+      return e
     }
-    const converter = createHeicConverter(failingDecoder)
-    await expect(converter(srcPath, join(tmpDir, 'fail-out.jpg'), 80)).rejects.toThrow(
-      'HEIF processing error'
-    )
+    const computer = createUniversalPhashComputer('/ffmpeg', {
+      spawnFn: spawnMock,
+      computeSharpPhash: mockSharpPhash,
+      generateTempPath: () => join(tmpDir, 'heif-temp.jpg')
+    })
+
+    await computer('/photos/IMG.heif')
+    expect(spawnCalled).toBe(true)
   })
 
-  it('uses the injected readFile function', async () => {
-    const destPath = join(tmpDir, 'custom-read-out.jpg')
-    const fakeBuffer = Buffer.from('custom-read-content')
-    const mockReadFile = (): Buffer => fakeBuffer
+  it('deletes the temp file after computing pHash for a HEIC file', async () => {
+    const tempFile = join(tmpDir, 'phash-cleanup-test.jpg')
+    let deleteCalledWith: string | null = null
 
-    let receivedBuffer: Buffer | ArrayBuffer | Uint8Array | undefined
-    const trackingDecoder: HeicPixelDecoder = async (opts) => {
-      receivedBuffer = opts.buffer
-      const data = new Uint8ClampedArray(4 * 4 * 4).fill(200)
-      return { data, width: 4, height: 4 }
+    const computer = createUniversalPhashComputer('/ffmpeg', {
+      spawnFn: makeSpawnMock(0, Buffer.from('jpeg')),
+      computeSharpPhash: mockSharpPhash,
+      generateTempPath: () => tempFile,
+      deleteFile: (p) => {
+        deleteCalledWith = p
+      }
+    })
+
+    await computer('/photos/IMG.heic')
+
+    expect(deleteCalledWith).toBe(tempFile)
+  })
+
+  it('returns null when ffmpeg exits with a non-zero code', async () => {
+    const computer = createUniversalPhashComputer('/ffmpeg', {
+      spawnFn: makeSpawnMock(1),
+      computeSharpPhash: mockSharpPhash,
+      generateTempPath: () => join(tmpDir, 'phash-fail.jpg')
+    })
+
+    const result = await computer('/photos/IMG.heic')
+    expect(result).toBeNull()
+  })
+
+  it('returns null when spawn emits an error event', async () => {
+    const computer = createUniversalPhashComputer('/ffmpeg', {
+      spawnFn: makeSpawnErrorMock(new Error('spawn error')),
+      computeSharpPhash: mockSharpPhash,
+      generateTempPath: () => join(tmpDir, 'phash-spawn-err.jpg')
+    })
+
+    const result = await computer('/photos/IMG.heic')
+    expect(result).toBeNull()
+  })
+
+  it('still attempts temp file deletion even when ffmpeg fails', async () => {
+    let deleteAttempted = false
+    const computer = createUniversalPhashComputer('/ffmpeg', {
+      spawnFn: makeSpawnMock(1),
+      computeSharpPhash: mockSharpPhash,
+      generateTempPath: () => join(tmpDir, 'phash-fail-cleanup.jpg'),
+      deleteFile: () => {
+        deleteAttempted = true
+      }
+    })
+
+    await computer('/photos/IMG.heic')
+    expect(deleteAttempted).toBe(true)
+  })
+
+  it('returns null when computeSharpPhash throws on the temp JPEG', async () => {
+    const computer = createUniversalPhashComputer('/ffmpeg', {
+      spawnFn: makeSpawnMock(0, Buffer.from('jpeg')),
+      computeSharpPhash: async () => {
+        throw new Error('sharp decode error')
+      },
+      generateTempPath: () => join(tmpDir, 'phash-sharp-fail.jpg'),
+      deleteFile: () => {}
+    })
+
+    const result = await computer('/photos/IMG.heic')
+    expect(result).toBeNull()
+  })
+
+  it('tolerates deleteFile throwing (ignores cleanup errors)', async () => {
+    const computer = createUniversalPhashComputer('/ffmpeg', {
+      spawnFn: makeSpawnMock(0, Buffer.from('jpeg')),
+      computeSharpPhash: mockSharpPhash,
+      generateTempPath: () => join(tmpDir, 'phash-delete-throw.jpg'),
+      deleteFile: () => {
+        throw new Error('delete failed')
+      }
+    })
+
+    // Should not throw even if deleteFile throws
+    await expect(computer('/photos/IMG.heic')).resolves.not.toBeNull()
+  })
+
+  it('passes the correct ffmpeg arguments for HEIC pHash computation', async () => {
+    const captured: { cmd: string; args: string[] }[] = []
+    const spawnMock = makeSpawnMock(0, Buffer.from('jpeg'), captured)
+    const tempFile = join(tmpDir, 'phash-args.jpg')
+
+    const computer = createUniversalPhashComputer('/path/to/ffmpeg', {
+      spawnFn: spawnMock,
+      computeSharpPhash: mockSharpPhash,
+      generateTempPath: () => tempFile
+    })
+
+    await computer('/photos/IMG.heic')
+
+    expect(captured).toHaveLength(1)
+    expect(captured[0].cmd).toBe('/path/to/ffmpeg')
+    expect(captured[0].args).toContain('-i')
+    expect(captured[0].args).toContain('/photos/IMG.heic')
+    expect(captured[0].args).toContain('-frames:v')
+    expect(captured[0].args).toContain('1')
+    expect(captured[0].args).toContain(tempFile)
+  })
+
+  it('passes HEIC file path to ffmpeg -i argument', async () => {
+    const captured: { cmd: string; args: string[] }[] = []
+    const spawnMock = makeSpawnMock(0, Buffer.from('jpeg'), captured)
+
+    const computer = createUniversalPhashComputer('/ffmpeg', {
+      spawnFn: spawnMock,
+      computeSharpPhash: mockSharpPhash,
+      generateTempPath: () => join(tmpDir, 'phash-input.jpg')
+    })
+
+    await computer('/albums/holiday/IMG_9999.heic')
+
+    const iIndex = captured[0].args.indexOf('-i')
+    expect(captured[0].args[iIndex + 1]).toBe('/albums/holiday/IMG_9999.heic')
+  })
+
+  it('extension check is case-insensitive for .HEIC and .HEIF', async () => {
+    let spawnCallCount = 0
+    const spawnMock: SpawnFn = (): EventEmitter => {
+      spawnCallCount++
+      const e = new EventEmitter()
+      setImmediate(() => e.emit('close', 0))
+      return e
     }
 
-    const converter = createHeicConverter(trackingDecoder, mockReadFile)
-    await converter('/any/path.heic', destPath, 80)
+    const computer = createUniversalPhashComputer('/ffmpeg', {
+      spawnFn: spawnMock,
+      computeSharpPhash: mockSharpPhash,
+      generateTempPath: () => join(tmpDir, 'phash-case.jpg')
+    })
 
-    expect(receivedBuffer).toBe(fakeBuffer)
-    expect(existsSync(destPath)).toBe(true)
+    // Both uppercase variants should trigger ffmpeg
+    await computer('/photos/IMG.HEIC')
+    await computer('/photos/IMG.HEIF')
+
+    // Sharp is called for non-HEIC extensions
+    expect(spawnCallCount).toBe(2)
   })
-})
 
-// ---------------------------------------------------------------------------
-// createHeicPhashComputer
-// ---------------------------------------------------------------------------
+  it('returns null when ffmpeg close event fires with null exit code', async () => {
+    const computer = createUniversalPhashComputer('/ffmpeg', {
+      spawnFn: makeSpawnMock(null),
+      computeSharpPhash: mockSharpPhash,
+      generateTempPath: () => join(tmpDir, 'phash-null-code.jpg'),
+      deleteFile: () => {}
+    })
 
-describe('createHeicPhashComputer', () => {
-  it('returns a PhashResult with correct width/height and a non-empty hash', async () => {
-    const computer = createHeicPhashComputer(createMockDecoder(64, 48), () => Buffer.from('fake'))
-    const result = await computer('/any/photo.heic')
+    const result = await computer('/photos/IMG.heic')
+    expect(result).toBeNull()
+  })
+
+  it('uses default generateTempPath and deleteFile when not injected', async () => {
+    // Default generateTempPath creates a UUID-based temp file in os.tmpdir().
+    // The spawn mock writes to args[4] (the temp path), which the default
+    // deleteFile (unlinkSync) then removes.
+    let sharpCalledWith: string | null = null
+
+    const computer = createUniversalPhashComputer('/ffmpeg', {
+      spawnFn: makeSpawnMock(0, Buffer.from('jpeg')),
+      computeSharpPhash: async (fp) => {
+        sharpCalledWith = fp
+        return { phash: 'default-path-hash', width: 100, height: 80 }
+      }
+      // generateTempPath and deleteFile intentionally NOT injected
+    })
+
+    const result = await computer('/photos/IMG.heic')
 
     expect(result).not.toBeNull()
-    expect(result!.width).toBe(64)
-    expect(result!.height).toBe(48)
-    expect(result!.phash).toHaveLength(16) // 64-bit DCT hash → 16 hex chars
-  })
-
-  it('passes the file buffer to the decoder via the injected readFile', async () => {
-    const fakeBuffer = Buffer.from('fake-heic-bytes')
-    const mockReadFile = (): Buffer => fakeBuffer
-
-    let receivedBuffer: Buffer | ArrayBuffer | Uint8Array | undefined
-    const trackingDecoder: HeicPixelDecoder = async (opts) => {
-      receivedBuffer = opts.buffer
-      const data = new Uint8ClampedArray(8 * 8 * 4).fill(100)
-      return { data, width: 8, height: 8 }
-    }
-
-    const computer = createHeicPhashComputer(trackingDecoder, mockReadFile)
-    await computer('/any/photo.heic')
-
-    expect(receivedBuffer).toBe(fakeBuffer)
-  })
-
-  it('returns null when the decoder throws', async () => {
-    const failingDecoder: HeicPixelDecoder = async () => {
-      throw new Error('HEIF decode error')
-    }
-    const computer = createHeicPhashComputer(failingDecoder)
-    const result = await computer('/any/photo.heic')
-    expect(result).toBeNull()
-  })
-
-  it('returns null when readFile throws', async () => {
-    const throwingReadFile = (): Buffer => {
-      throw new Error('file not found')
-    }
-    const computer = createHeicPhashComputer(createMockDecoder(), throwingReadFile)
-    const result = await computer('/nonexistent/photo.heic')
-    expect(result).toBeNull()
-  })
-
-  it('returns null when sharp rejects due to invalid pixel dimensions', async () => {
-    // width=0, height=0 causes sharp to throw on raw input
-    const zeroSizeDecoder: HeicPixelDecoder = async () => ({
-      data: new Uint8ClampedArray(0),
-      width: 0,
-      height: 0
-    })
-    const computer = createHeicPhashComputer(zeroSizeDecoder)
-    const result = await computer('/any/photo.heic')
-    expect(result).toBeNull()
-  })
-
-  it('produces the same hash for identical pixel data regardless of file path', async () => {
-    const computer = createHeicPhashComputer(createMockDecoder(32, 32), () => Buffer.from('fake'))
-    const result1 = await computer('/path/a.heic')
-    const result2 = await computer('/path/b.heic')
-    expect(result1!.phash).toBe(result2!.phash)
+    expect(sharpCalledWith).not.toBeNull()
+    // The temp path should follow the keepic-phash-*.jpg pattern
+    expect(sharpCalledWith).toMatch(/keepic-phash-.+\.jpg$/)
+    // The temp file should have been deleted by the default deleteFile
+    expect(existsSync(sharpCalledWith!)).toBe(false)
   })
 })

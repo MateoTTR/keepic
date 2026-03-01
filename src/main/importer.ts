@@ -1,12 +1,8 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'fs'
 import { basename, dirname, extname, join } from 'path'
+import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
-import {
-  isLivePhotoMov,
-  defaultHeicConverter,
-  defaultHeicPhashComputer,
-  type HeicConverter
-} from './heic'
+import { isLivePhotoMov, defaultHeicConverter, type HeicConverter } from './heic'
 import { readExifDate, defaultExifLoader, type ExifLoader } from './exif'
 import { defaultPhashComputer, type PhashComputer, type PhashResult } from './phash'
 import { getDestinationPath } from '../shared/library-path'
@@ -124,7 +120,9 @@ export interface PlannerOptions {
   loadExif?: ExifLoader
   computePhash?: PhashComputer
   checkExists?: (path: string) => boolean
-  computeHeicPhash?: PhashComputer
+  convertHeic?: HeicConverter
+  stagingDir?: string
+  mkdirp?: (path: string) => void
 }
 
 /**
@@ -150,7 +148,11 @@ export async function buildImportPlan(
   const loadExif = options.loadExif ?? defaultExifLoader
   const computePhash = options.computePhash ?? defaultPhashComputer
   const checkExists = options.checkExists ?? existsSync
-  const computeHeicPhash = options.computeHeicPhash ?? defaultHeicPhashComputer
+  const convertHeicFn = options.convertHeic ?? defaultHeicConverter
+  const stagingDir = options.stagingDir ?? join(tmpdir(), `keepic-plan-${randomUUID()}`)
+  const mkdirpFn = options.mkdirp ?? ((p: string) => mkdirSync(p, { recursive: true }))
+
+  let stagingDirCreated = false
 
   const { candidates, livePhotoMovs } = scanSourceFiles(sourceFolder)
   const total = candidates.length
@@ -165,14 +167,29 @@ export async function buildImportPlan(
     const isHeic = srcExt === '.heic' || srcExt === '.heif'
     const convertHeic = isHeic && config.heicConversion.enabled
 
-    // Compute pHash on the file's final form:
-    // - If HEIC conversion is enabled, pHash is computed from raw HEIC pixels via
-    //   computeHeicPhash (heic-decode → sharp raw input), which is perceptually
-    //   equivalent to the JPEG the indexer will see at quality 90+.
-    // - Otherwise, pHash is computed on the source file directly.
-    const phashResult: PhashResult | null = convertHeic
-      ? await computeHeicPhash(srcPath)
-      : await computePhash(srcPath)
+    let phashResult: PhashResult | null
+    let stagedPath: string | undefined
+
+    if (convertHeic) {
+      // Stage HEIC → JPEG once in planner; compute pHash from the staged JPEG.
+      // The executor will then move the staged file instead of re-converting.
+      if (!stagingDirCreated) {
+        mkdirpFn(stagingDir)
+        stagingDirCreated = true
+      }
+      const stagedFilename = `${randomUUID()}-${basename(srcPath, srcExt)}.jpg`
+      const candidateStagedPath = join(stagingDir, stagedFilename)
+      try {
+        await convertHeicFn(srcPath, candidateStagedPath, config.heicConversion.jpegQuality)
+        stagedPath = candidateStagedPath
+        phashResult = await computePhash(stagedPath)
+      } catch {
+        // Staging failed — fall back to no staging; executor will retry conversion
+        phashResult = null
+      }
+    } else {
+      phashResult = await computePhash(srcPath)
+    }
 
     // Extract capture date via EXIF fallback chain
     const exifResult = await readExifDate(srcPath, stat.mtime, loadExif)
@@ -226,7 +243,8 @@ export async function buildImportPlan(
       status,
       duplicateOf,
       originalDestination,
-      errorMessage
+      errorMessage,
+      stagedPath
     })
 
     onProgress({ total, processed: i + 1, currentFile: srcPath })
@@ -340,6 +358,7 @@ export interface ExecutorOptions {
   mkdirp?: (path: string) => void
   statFile?: (path: string) => { size: number; mtime: Date }
   rmTempDir?: (path: string) => void
+  rmStagedFile?: (path: string) => void
   isCancelled?: () => boolean
 }
 
@@ -367,6 +386,7 @@ export async function executeImportPlan(
   const mkdirpFn = options.mkdirp ?? ((p) => mkdirSync(p, { recursive: true }))
   const statFileFn = options.statFile ?? ((p) => statSync(p))
   const rmTempDirFn = options.rmTempDir ?? ((p) => rmSync(p, { recursive: true, force: true }))
+  const rmStagedFileFn = options.rmStagedFile ?? ((p) => rmSync(p, { force: true }))
   const isCancelled = options.isCancelled ?? (() => false)
 
   const now = new Date().toISOString()
@@ -415,23 +435,28 @@ export async function executeImportPlan(
         const isHeic = srcExt === '.heic' || srcExt === '.heif'
         const doConvert = isHeic && config.heicConversion.enabled
 
-        // Unique temp filename to avoid collisions between concurrent imports
-        const tempFilename = `${randomUUID()}-${basename(entry.destinationRelativePath)}`
-        const tempPath = join(tempDir, tempFilename)
-
-        // Stage: copy/convert source → temp
-        if (doConvert) {
-          await convertHeicFn(entry.sourcePath, tempPath, config.heicConversion.jpegQuality)
-        } else {
-          copyFileFn(entry.sourcePath, tempPath)
-        }
-
         // Create destination folder in library if needed
         const destAbsPath = join(libraryPath, entry.destinationRelativePath)
-        mkdirpFn(dirname(destAbsPath))
 
-        // Atomic move: temp → library
-        moveFileFn(tempPath, destAbsPath)
+        if (entry.stagedPath) {
+          // Planner pre-staged a JPEG — move it directly (no re-conversion)
+          mkdirpFn(dirname(destAbsPath))
+          moveFileFn(entry.stagedPath, destAbsPath)
+        } else {
+          // Unique temp filename to avoid collisions between concurrent imports
+          const tempFilename = `${randomUUID()}-${basename(entry.destinationRelativePath)}`
+          const tempPath = join(tempDir, tempFilename)
+
+          // Stage: copy/convert source → temp
+          if (doConvert) {
+            await convertHeicFn(entry.sourcePath, tempPath, config.heicConversion.jpegQuality)
+          } else {
+            copyFileFn(entry.sourcePath, tempPath)
+          }
+
+          mkdirpFn(dirname(destAbsPath))
+          moveFileFn(tempPath, destAbsPath)
+        }
 
         // DB upsert
         const fileStat = statFileFn(destAbsPath)
@@ -468,7 +493,19 @@ export async function executeImportPlan(
       })
     }
   } finally {
-    // Always clean up temp dir
+    // Clean up any staged files that were not moved (errors, cancellation)
+    // rmStagedFileFn uses force:true so it silently ignores already-moved files
+    for (const entry of entriesToProcess) {
+      if (entry.stagedPath) {
+        try {
+          rmStagedFileFn(entry.stagedPath)
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+    }
+
+    // Always clean up executor temp dir
     try {
       rmTempDirFn(tempDir)
     } catch {
