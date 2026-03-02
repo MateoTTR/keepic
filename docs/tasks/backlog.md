@@ -103,13 +103,14 @@
 
 ## Phase 8 — Post-release bug fixes (v0.2.x)
 
-> Bugs found during manual testing of v0.2.0 (2026-02-26).
-> Both implemented as feature branches from `develop`, targeting a v0.2.1 release.
+> Bugs found during manual testing of v0.2.0 (2026-02-26) and v0.2.1 (2026-03-02).
+> Targeting a v0.2.1 release.
 
 | # | Title | Priority | Status | Session |
 |---|---|---|---|---|
 | [TASK-037](TASK-037-fix-heic-double-decode.md) | Fix slow HEIC processing — replace WASM decoder with native ffmpeg | P0 | `[x]` | 2026-03-01-session-031 |
 | [TASK-038](TASK-038-fix-picker-list-url.md) | Fix Picker API list URL — sessionId must be a query param, not a path segment | P1 | `[x]` | 2026-03-01-session-030 |
+| [TASK-039](TASK-039-fix-heic-ffmpeg-windows.md) | Fix HEIC ffmpeg crash on Windows + add HEIC conversion error reporting | P0 | `[ ]` | — |
 
 ### CI fixes (committed directly to `develop`)
 
