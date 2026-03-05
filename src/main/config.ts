@@ -4,8 +4,8 @@ import type { AppConfig } from '../shared/types'
 
 const DEFAULT_CONFIG: AppConfig = {
   libraryPath: null,
-  heicConversion: {
-    enabled: true,
+  heic: {
+    mode: 'keep',
     jpegQuality: 90
   }
 }
@@ -66,6 +66,9 @@ export class ConfigManager {
 /**
  * Merges a parsed (but unvalidated) JSON value with the default config.
  * Unknown or wrongly-typed fields fall back to their default values.
+ *
+ * Handles backward compatibility: if the old `heicConversion` key is present
+ * (from v0.2.x config files), it is migrated to the new `heic` shape.
  */
 export function mergeWithDefaults(parsed: unknown): AppConfig {
   const result = structuredClone(DEFAULT_CONFIG)
@@ -80,13 +83,24 @@ export function mergeWithDefaults(parsed: unknown): AppConfig {
     result.libraryPath = obj['libraryPath'] as string | null
   }
 
-  if (typeof obj['heicConversion'] === 'object' && obj['heicConversion'] !== null) {
-    const heic = obj['heicConversion'] as Record<string, unknown>
-    if (typeof heic['enabled'] === 'boolean') {
-      result.heicConversion.enabled = heic['enabled']
+  // New heic config shape
+  if (typeof obj['heic'] === 'object' && obj['heic'] !== null) {
+    const heic = obj['heic'] as Record<string, unknown>
+    if (heic['mode'] === 'keep' || heic['mode'] === 'convert') {
+      result.heic.mode = heic['mode']
     }
     if (typeof heic['jpegQuality'] === 'number') {
-      result.heicConversion.jpegQuality = heic['jpegQuality']
+      result.heic.jpegQuality = heic['jpegQuality']
+    }
+  }
+  // Backward compat: migrate old heicConversion to new heic shape
+  else if (typeof obj['heicConversion'] === 'object' && obj['heicConversion'] !== null) {
+    const old = obj['heicConversion'] as Record<string, unknown>
+    if (typeof old['enabled'] === 'boolean') {
+      result.heic.mode = old['enabled'] ? 'convert' : 'keep'
+    }
+    if (typeof old['jpegQuality'] === 'number') {
+      result.heic.jpegQuality = old['jpegQuality']
     }
   }
 

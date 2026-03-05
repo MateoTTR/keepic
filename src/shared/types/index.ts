@@ -36,8 +36,8 @@ export interface ImportJob {
 
 export interface AppConfig {
   libraryPath: string | null
-  heicConversion: {
-    enabled: boolean
+  heic: {
+    mode: 'keep' | 'convert'
     jpegQuality: number
   }
 }
@@ -59,6 +59,7 @@ export interface IndexResult {
   indexed: number
   skipped: number
   deleted: number
+  errors: Array<{ file: string; error: string }>
 }
 
 export interface ImportProgress {

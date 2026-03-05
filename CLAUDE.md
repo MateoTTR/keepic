@@ -29,6 +29,8 @@ At the start of each session, read this file entirely, then follow the "Session 
 | [ADR-001](docs/architecture/adr/ADR-001-desktop-framework.md) | Desktop framework: Electron vs Tauri | **Accepted** — Electron |
 | [ADR-002](docs/architecture/adr/ADR-002-local-storage-strategy.md) | Local storage strategy | **Accepted** — Filesystem + SQLite |
 | [ADR-003](docs/architecture/adr/ADR-003-google-photos-integration.md) | Google Photos API integration | Proposed |
+| [ADR-004](docs/architecture/adr/ADR-004-ui-framework.md) | UI framework: Svelte 5 + Tailwind + shadcn-svelte | **Accepted** |
+| [ADR-005](docs/architecture/adr/ADR-005-heic-decoding-strategy.md) | HEIC decoding strategy | **Accepted** — heic-decode (WASM) |
 
 ---
 

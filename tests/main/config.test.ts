@@ -15,7 +15,7 @@ function makeTempDir(): string {
 
 const DEFAULT: AppConfig = {
   libraryPath: null,
-  heicConversion: { enabled: true, jpegQuality: 90 }
+  heic: { mode: 'keep', jpegQuality: 90 }
 }
 
 // ---------------------------------------------------------------------------
@@ -51,36 +51,67 @@ describe('mergeWithDefaults', () => {
     expect(result.libraryPath).toBeNull()
   })
 
-  it('applies heicConversion.enabled when boolean', () => {
+  it('applies heic.mode when valid', () => {
+    const result = mergeWithDefaults({ heic: { mode: 'convert' } })
+    expect(result.heic.mode).toBe('convert')
+  })
+
+  it('ignores heic.mode when invalid string', () => {
+    const result = mergeWithDefaults({ heic: { mode: 'invalid' } })
+    expect(result.heic.mode).toBe('keep')
+  })
+
+  it('ignores heic.mode when wrong type', () => {
+    const result = mergeWithDefaults({ heic: { mode: 42 } })
+    expect(result.heic.mode).toBe('keep')
+  })
+
+  it('applies heic.jpegQuality when number', () => {
+    const result = mergeWithDefaults({ heic: { jpegQuality: 75 } })
+    expect(result.heic.jpegQuality).toBe(75)
+  })
+
+  it('ignores heic.jpegQuality when wrong type', () => {
+    const result = mergeWithDefaults({ heic: { jpegQuality: '80' } })
+    expect(result.heic.jpegQuality).toBe(90)
+  })
+
+  it('ignores heic when not an object', () => {
+    const result = mergeWithDefaults({ heic: 'bad' })
+    expect(result.heic).toEqual(DEFAULT.heic)
+  })
+
+  // Backward compat: old heicConversion → new heic
+  it('migrates old heicConversion.enabled=true to heic.mode=convert', () => {
+    const result = mergeWithDefaults({ heicConversion: { enabled: true, jpegQuality: 85 } })
+    expect(result.heic.mode).toBe('convert')
+    expect(result.heic.jpegQuality).toBe(85)
+  })
+
+  it('migrates old heicConversion.enabled=false to heic.mode=keep', () => {
     const result = mergeWithDefaults({ heicConversion: { enabled: false } })
-    expect(result.heicConversion.enabled).toBe(false)
+    expect(result.heic.mode).toBe('keep')
   })
 
-  it('ignores heicConversion.enabled when wrong type', () => {
-    const result = mergeWithDefaults({ heicConversion: { enabled: 'yes' } })
-    expect(result.heicConversion.enabled).toBe(true) // default
+  it('ignores old heicConversion when new heic key is present', () => {
+    const result = mergeWithDefaults({
+      heic: { mode: 'convert', jpegQuality: 70 },
+      heicConversion: { enabled: false, jpegQuality: 50 }
+    })
+    expect(result.heic.mode).toBe('convert')
+    expect(result.heic.jpegQuality).toBe(70)
   })
 
-  it('applies heicConversion.jpegQuality when number', () => {
-    const result = mergeWithDefaults({ heicConversion: { jpegQuality: 75 } })
-    expect(result.heicConversion.jpegQuality).toBe(75)
-  })
-
-  it('ignores heicConversion.jpegQuality when wrong type', () => {
-    const result = mergeWithDefaults({ heicConversion: { jpegQuality: '80' } })
-    expect(result.heicConversion.jpegQuality).toBe(90) // default
-  })
-
-  it('ignores heicConversion when not an object', () => {
+  it('ignores old heicConversion when not an object', () => {
     const result = mergeWithDefaults({ heicConversion: 'bad' })
-    expect(result.heicConversion).toEqual(DEFAULT.heicConversion)
+    expect(result.heic).toEqual(DEFAULT.heic)
   })
 
   it('returns a deep copy (mutating result does not affect a second call)', () => {
     const a = mergeWithDefaults({})
-    a.heicConversion.jpegQuality = 1
+    a.heic.jpegQuality = 1
     const b = mergeWithDefaults({})
-    expect(b.heicConversion.jpegQuality).toBe(90)
+    expect(b.heic.jpegQuality).toBe(90)
   })
 })
 
@@ -109,8 +140,8 @@ describe('ConfigManager', () => {
 
   it('get() returns a deep copy (mutation does not affect internal state)', () => {
     const a = cfg.get()
-    a.heicConversion.jpegQuality = 1
-    expect(cfg.get().heicConversion.jpegQuality).toBe(90)
+    a.heic.jpegQuality = 1
+    expect(cfg.get().heic.jpegQuality).toBe(90)
   })
 
   // --- load() — no file ---
@@ -125,7 +156,7 @@ describe('ConfigManager', () => {
   it('load() reads a valid config.json', () => {
     const stored: AppConfig = {
       libraryPath: '/mnt/nas/photos',
-      heicConversion: { enabled: false, jpegQuality: 75 }
+      heic: { mode: 'convert', jpegQuality: 75 }
     }
     writeFileSync(join(tmpDir, 'config.json'), JSON.stringify(stored), 'utf-8')
     cfg.load()
@@ -137,7 +168,19 @@ describe('ConfigManager', () => {
     cfg.load()
     const result = cfg.get()
     expect(result.libraryPath).toBe('/foo')
-    expect(result.heicConversion).toEqual(DEFAULT.heicConversion)
+    expect(result.heic).toEqual(DEFAULT.heic)
+  })
+
+  it('load() migrates old heicConversion config to new heic shape', () => {
+    writeFileSync(
+      join(tmpDir, 'config.json'),
+      JSON.stringify({ libraryPath: '/old', heicConversion: { enabled: true, jpegQuality: 80 } }),
+      'utf-8'
+    )
+    cfg.load()
+    const result = cfg.get()
+    expect(result.heic.mode).toBe('convert')
+    expect(result.heic.jpegQuality).toBe(80)
   })
 
   // --- load() — corrupt file ---
@@ -203,7 +246,7 @@ describe('ConfigManager', () => {
       join(tmpDir, 'config.json'),
       JSON.stringify({
         libraryPath: '/backup',
-        heicConversion: { enabled: false, jpegQuality: 60 }
+        heic: { mode: 'convert', jpegQuality: 60 }
       }),
       'utf-8'
     )
@@ -214,7 +257,7 @@ describe('ConfigManager', () => {
     cfg2.load()
     expect(cfg2.get()).toEqual({
       libraryPath: '/backup',
-      heicConversion: { enabled: false, jpegQuality: 60 }
+      heic: { mode: 'convert', jpegQuality: 60 }
     })
   })
 })

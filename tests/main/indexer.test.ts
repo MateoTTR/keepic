@@ -230,7 +230,7 @@ describe('runIndexer', () => {
 
   it('returns zeroes for an empty library', async () => {
     const result = await runIndexer(libraryRoot, db, () => {}, opts)
-    expect(result).toEqual({ indexed: 0, skipped: 0, deleted: 0 })
+    expect(result).toEqual({ indexed: 0, skipped: 0, deleted: 0, errors: [] })
   })
 
   it('uses default ExifLoader and PhashComputer when options are omitted', async () => {
@@ -402,5 +402,47 @@ describe('runIndexer', () => {
     expect(row.phash).not.toBeNull()
     expect(row.width).toBe(4032)
     expect(row.height).toBe(3024)
+  })
+
+  it('reports pHash errors without stopping indexing', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['good.jpg', 'bad.heic', 'also-good.jpg'] })
+
+    const errorPhash: PhashComputer = async (filePath: string) => {
+      if (filePath.endsWith('.heic')) throw new Error('HEIF decode failed')
+      return mockPhashComputer(filePath)
+    }
+
+    const result = await runIndexer(libraryRoot, db, () => {}, {
+      loadExif: nullExifLoader,
+      computePhash: errorPhash
+    })
+
+    expect(result.indexed).toBe(3) // all 3 indexed (bad.heic with null phash)
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0].file).toContain('bad.heic')
+    expect(result.errors[0].error).toBe('HEIF decode failed')
+
+    // Verify the bad file was still indexed (with null phash)
+    const row = db.db
+      .prepare('SELECT phash FROM photos WHERE path LIKE ?')
+      .get('%bad.heic') as { phash: string | null }
+    expect(row.phash).toBeNull()
+  })
+
+  it('reports non-Error pHash failures as strings', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['fail.jpg'] })
+
+    const throwStringPhash: PhashComputer = async () => {
+      // eslint-disable-next-line no-throw-literal
+      throw 'string error'
+    }
+
+    const result = await runIndexer(libraryRoot, db, () => {}, {
+      loadExif: nullExifLoader,
+      computePhash: throwStringPhash
+    })
+
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0].error).toBe('string error')
   })
 })

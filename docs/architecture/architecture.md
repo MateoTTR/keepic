@@ -46,7 +46,7 @@ The app is **append-only**: it never modifies or deletes files already in the sh
 | Build toolchain | `electron-vite` | Fast HMR, modern bundling |
 | Language | TypeScript (main + renderer + workers) | Single language |
 | UI framework | Svelte 5 + Tailwind CSS + shadcn-svelte | Zero runtime overhead, minimal boilerplate (see ADR-004) |
-| Image processing | `sharp` | HEIC read/write, JPEG conversion — cross-platform |
+| Image processing | `sharp` + `heic-decode` | sharp for JPEG/PNG/TIFF; heic-decode (WASM libheif) for HEIC full-image decode (see [ADR-005](adr/ADR-005-heic-decoding-strategy.md)) |
 | EXIF reading | `exifreader` | Pure JS, comprehensive EXIF support |
 | Perceptual hashing | Custom DCT pHash (64-bit) | Implemented in `src/main/phash.ts` — no external dependency |
 | SQLite | `better-sqlite3` | Synchronous, fast, Node.js main process |
@@ -81,7 +81,7 @@ The app is **append-only**: it never modifies or deletes files already in the sh
 Separate threads spawned by the main process for CPU-intensive tasks:
 - **EXIF worker**: reads EXIF from image files, applies fallback date chain
 - **pHash worker**: computes perceptual hash for duplicate detection
-- **HEIC conversion worker**: converts HEIC → JPEG using `sharp`, preserves EXIF
+- **HEIC conversion worker**: decodes HEIC via `heic-decode` (WASM), converts to JPEG via `sharp`
 - **Index worker**: scans the shared library folder, upserts DB records
 
 ### 3.4 Storage
@@ -156,9 +156,9 @@ Check pHash against index.db:
   └─ No match → continue
         │
         ▼
-HEIC conversion worker (if enabled in settings):
-  ├─ Convert HEIC → JPEG in temp/
-  └─ Copy EXIF metadata to JPEG
+HEIC handling (based on heic.mode setting):
+  ├─ 'keep': copy HEIC as-is to library (default)
+  └─ 'convert': heic-decode → sharp JPEG in temp/ (staged)
         │
         ▼
 Destination: library_root/YYYY/YYYY.MM/filename
@@ -172,32 +172,31 @@ Move file from temp/ to library; upsert in index.db
 Import summary: N imported, M duplicates, K Live Photo videos discarded
 ```
 
-### 4.3 Import from Google Photos
+### 4.3 Import from Google Photos (Picker API)
 
 ```
-User opens Google Photos import
-        │
-        ▼
-App pre-fills start date = day after last successfully imported photo
-  (from import_jobs table; empty on first import)
-  User can adjust the date before confirming
+User clicks "Open Google Photos Picker"
         │
         ▼
 OAuth 2.0 → access token (from OS keychain, or new browser auth flow)
+  Scope: photospicker.mediaitems.readonly
         │
         ▼
-Fetch media items: creationTime >= start date, paginated
-  → Skip items whose google_id is already in index.db
+Create Picker session → open Picker UI in default browser
+  User selects photos → clicks "Done"
         │
         ▼
-For each new item:
-  ├─ Download to temp/
-  ├─ Detect Live Photo MOV → discard
-  ├─ pHash check + HEIC conversion (same pipeline as local import)
-  └─ Move to library_root/YYYY/YYYY.MM/ + upsert in index.db
+App polls session status every 3s (timeout 5min)
+  Once confirmed → list all selected media items
         │
         ▼
-Record import job in import_jobs (last imported date, count)
+Download selected items to temp/ (original quality, baseUrl=d)
+  → Auto-refresh access token during long downloads
+  → Individual errors recorded, do not abort batch
+        │
+        ▼
+Hand off downloaded folder to local import pipeline:
+  plan → deduplication review → execute → library write
 ```
 
 ---
@@ -210,6 +209,7 @@ Record import job in import_jobs (last imported date, count)
 | [ADR-002](adr/ADR-002-local-storage-strategy.md) | Local storage strategy | **Accepted** | 2026-02-21 |
 | [ADR-003](adr/ADR-003-google-photos-integration.md) | Google Photos API integration | Proposed | 2026-02-21 |
 | [ADR-004](adr/ADR-004-ui-framework.md) | UI framework: Svelte 5 + Tailwind CSS + shadcn-svelte | **Accepted** | 2026-02-21 |
+| [ADR-005](adr/ADR-005-heic-decoding-strategy.md) | HEIC decoding strategy: heic-decode (WASM) | **Accepted** | 2026-03-05 |
 
 ---
 
