@@ -3,7 +3,7 @@ import { join, basename, extname } from 'path'
 import { isYearFolder } from '../shared/library-path'
 import { readExifDate, defaultExifLoader, type ExifLoader } from './exif'
 import { type PhashComputer } from './phash'
-import { createUniversalPhashComputer, getFfmpegPath } from './heic'
+import { createUniversalPhashComputer } from './heic'
 import type { KeePicDatabase } from './db/database'
 import type { IndexProgress, IndexResult } from '../shared/types'
 
@@ -173,6 +173,7 @@ export interface RunIndexerOptions {
  * - Files whose path + mtime are unchanged are skipped.
  * - Files on disk whose DB record was previously marked deleted are revived.
  * - Files in the DB that are no longer on disk are marked with `deleted_at`.
+ * - Files that fail pHash computation are indexed with phash=null and reported in errors.
  *
  * @param libraryPath - Absolute path to the shared library root.
  * @param db          - Open KeePicDatabase instance.
@@ -186,11 +187,12 @@ export async function runIndexer(
   options: RunIndexerOptions = {}
 ): Promise<IndexResult> {
   const loadExif = options.loadExif ?? defaultExifLoader
-  const computePhash = options.computePhash ?? createUniversalPhashComputer(getFfmpegPath())
+  const computePhash = options.computePhash ?? createUniversalPhashComputer()
 
   const relativePaths = scanLibraryFiles(libraryPath)
   const total = relativePaths.length
   const presentPaths = new Set<string>()
+  const errors: Array<{ file: string; error: string }> = []
 
   let indexed = 0
   let skipped = 0
@@ -210,8 +212,17 @@ export async function runIndexer(
       continue
     }
 
-    // Process the file
-    const phashResult = await computePhash(absolutePath)
+    // Compute pHash — errors are caught and reported, not thrown
+    let phashResult: Awaited<ReturnType<PhashComputer>> = null
+    try {
+      phashResult = await computePhash(absolutePath)
+    } catch (err) {
+      errors.push({
+        file: relativePath,
+        error: err instanceof Error ? err.message : String(err)
+      })
+    }
+
     const exifResult = await readExifDate(relativePath, stat.mtime, loadExif)
 
     const now = new Date().toISOString()
@@ -234,5 +245,5 @@ export async function runIndexer(
   const now = new Date().toISOString()
   const deleted = markDeleted(db, presentPaths, now)
 
-  return { indexed, skipped, deleted }
+  return { indexed, skipped, deleted, errors }
 }

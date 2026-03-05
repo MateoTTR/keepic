@@ -1,8 +1,8 @@
-# TASK-039 — Fix HEIC handling: Windows crash, full-res conversion, default keep-as-HEIC
+# TASK-039 — Fix HEIC handling: replace ffmpeg with heic-decode, error reporting, default keep-as-HEIC
 
 ## Status
 
-`[ ]` Pending
+`[x]` Completed — Session 033
 
 ## Phase
 
@@ -15,168 +15,119 @@ P0
 ## Context
 
 Identified during manual testing of v0.2.1 on Windows (2026-03-02, session 032).
-Confirmed and extended during HEIC investigation session (2026-03-02, session 032).
+Cross-format pHash testing performed in session 033 (2026-03-05) confirmed the approach.
 
-Three distinct problems with HEIC handling were found:
-- **Bug A**: ffmpeg crashes on Windows — no HEIC processing at all in the packaged app
-- **Bug B**: ffmpeg produces 512×512 thumbnails instead of full-res when converting — affects Linux too
-- **New spec**: default behaviour should be to keep HEIC files as-is (no conversion), with optional JPEG conversion
+Three distinct problems with HEIC handling were found, plus a spec change:
+- **Bug A**: ffmpeg crashes on Windows — Linux ELF binary packaged in Windows installer
+- **Bug B**: pHash computed on tile 0 only (512x512 = 2% of image) — cross-format HEIC/JPEG dedup broken
+- **Bug C**: Silent failures when HEIC processing fails — no user feedback
+- **Spec change**: default to keeping HEIC files as-is (`heic.mode = 'keep'`), conversion optional
 
-## Bugs
+## Solution — Replace ffmpeg with heic-decode v2.1.0
 
-### Bug A — ffmpeg crashes on Windows (exit 3199971767)
+All three bugs were resolved by **completely removing the ffmpeg dependency** and replacing it with
+`heic-decode` (WebAssembly HEIC decoder using libheif-js/libde265):
 
-**Symptom**: `IMG_0982.HEIC — ffmpeg exited with code 3199971767` during import (local folder and Google
-Photos Picker).
+| Problem | How heic-decode fixes it |
+|---|---|
+| Bug A (Windows crash) | No native binary to package — WASM works everywhere |
+| Bug B (tile 0 pHash) | Full-image RGBA decode — pHash represents 100% of the image |
+| Bug C (silent failures) | Errors now caught and reported to the user |
 
-**Root cause**: `ffmpeg-static` downloads a platform-specific binary at `npm install` time. The GitHub
-Actions CI pipeline runs on Ubuntu → downloads the **Linux ELF** binary. `electron-builder --win`
-then packages this Linux binary into the Windows installer. On Windows, the Linux binary cannot be
-executed and crashes with exit code `0xBEBBB1B7`.
+### Cross-format pHash validation
 
-`electron-builder`'s `npmRebuild: true` only rebuilds native `.node` addons — it does not re-run
-`ffmpeg-static`'s post-install script for the target platform.
+Tested on 20 real iPhone 12MP HEIC files (session 033):
 
-**Impact**:
-- Import of HEIC files fails with an error at the execution phase
-- At the planning phase, the ffmpeg error is silently swallowed → `phashResult = null`,
-  `stagedPath = undefined` → no duplicate detection for HEIC files → photos already in the library
-  appear as "collisions" instead of "duplicates"
+| Comparison | Avg Hamming distance | Max | Conclusion |
+|---|---|---|---|
+| RGBA direct vs JPEG intermediate | 0.1 bits | 1 bit | Identical — no JPEG intermediate needed |
+| Tile 0 vs full image | 32.6 bits | — | Completely different — tile 0 was wrong |
 
-### Bug B — ffmpeg outputs 512×512 tile instead of full-res when converting
+The RGBA-to-grayscale path (heic-decode) produces pHash values compatible with the
+JPEG-to-grayscale path (sharp). Cross-format deduplication (HEIC vs JPEG) now works correctly.
 
-**Symptom**: HEIC → JPEG conversion produces a 512×512 JPEG (5KB) instead of the native
-3024×4032 (148KB). This bug exists on **all platforms**, including Linux in development.
+### Performance
 
-**Root cause**: iPhone HEIC files use a **HEVC Tile Grid** structure. The 3024×4032 image is encoded
-as 48 independent 512×512 HEVC tiles (`dependent` streams) assembled into a stream group (`default`).
-
-Without an explicit `-vf scale=W:H` filter, ffmpeg selects the first tile stream (stream `#0:0`,
-512×512) rather than assembling the full tile grid. The `-vf scale=W:H` filter forces ffmpeg to
-decode and assemble the complete tile grid, but requires knowing the target dimensions in advance.
-
-```
-# Current command — outputs first tile (512×512) ❌
-ffmpeg -i FILE.heic -q:v 85 dest.jpg -y  →  512×512, 5KB
-
-# With explicit scale — outputs full image ✓
-ffmpeg -i FILE.heic -vf scale=3024:4032 -update 1 -q:v 85 dest.jpg -y  →  3024×4032, 148KB
-```
-
-**Impact on pHash**: ✅ No impact — the 512×512 tile is sufficient for pHash computation.
-The DCT hash is identical between the 512×512 tile and the full 3024×4032 image (Hamming 0 bits),
-because pHash resizes to 32×32 anyway. The current pHash approach (no scale filter) is **correct and
-fast** and must NOT be changed.
-
-**Impact on conversion**: ❌ Critical — the library would store degraded 512×512 JPEGs instead of
-full-resolution images.
+heic-decode v2.1.0 performance (12MP iPhone HEIC):
+- Average: **393ms/file** (min 214ms, max 513ms)
+- v1.x was 2000-5000ms/file — **~10x improvement** in v2
+- Acceptable for batch indexing; native addon deferred to optional future task (TASK-040)
 
 ## Spec change — Default to keep HEIC as-is
 
-### New behaviour
+### New config shape
 
-Add a **copy mode** flag for HEIC handling with two options:
+```typescript
+// Before (v0.2.1)
+heicConversion: {
+  enabled: boolean        // default: true
+  jpegQuality: number     // default: 85
+}
 
-| Mode | Behaviour | Default |
-|---|---|---|
-| `'keep'` | Copy the original HEIC file into the library unchanged | ✅ **Yes** |
-| `'convert'` | Convert to JPEG at full native resolution before storing | No |
+// After (v0.2.2)
+heic: {
+  mode: 'keep' | 'convert'   // default: 'keep'
+  jpegQuality: number         // default: 90, only used when mode = 'convert'
+}
+```
 
-This replaces the current `heicConversion.enabled` boolean with a new `heicMode` setting.
+### Backward compatibility
+
+`mergeWithDefaults()` detects the old `heicConversion` key and migrates:
+- `enabled: true` → `mode: 'convert'`
+- `enabled: false` → `mode: 'keep'`
 
 ### Rationale
 
 - Keeping HEIC preserves original quality and metadata
 - HEIC files are smaller than JPEG at equivalent quality
 - Synology Photo Station supports HEIC natively
-- Avoids the full-res conversion complexity (Bug B) for the common case
-- pHash always uses the fast 512×512 tile decode regardless of the copy mode
+- Avoids conversion complexity for the common case
+- pHash now uses full-image decode regardless of copy mode
 
-### Settings change
+## Error reporting (Bug C)
 
-```typescript
-// Before
-heicConversion: {
-  enabled: boolean        // default: true
-  jpegQuality: number     // default: 85
-}
+### Indexer
+- `IndexResult` now includes `errors: Array<{ file: string; error: string }>`
+- pHash computation wrapped in try/catch — errors collected, file still indexed with `phash=null`
+- Non-Error throws handled (stringified)
 
-// After
-heic: {
-  mode: 'keep' | 'convert'   // default: 'keep'
-  jpegQuality: number         // default: 85, only used when mode = 'convert'
-}
-```
+### Importer (planner)
+- pHash failure sets `status = 'error'` with `errorMessage` instead of silently setting `phash=null`
+- HEIC conversion failure sets `status = 'error'` with `errorMessage`
+- Both Error and non-Error throws handled
 
-## Deliverables
+## Files modified
 
-### 1. Fix Bug A — Windows binary packaging
+| File | Changes |
+|---|---|
+| `package.json` | Removed `ffmpeg-static`, added `heic-decode@^2.1.0`, removed `asarUnpack` for ffmpeg |
+| `src/main/heic.ts` | Complete rewrite: removed ffmpeg, implemented heic-decode + sharp |
+| `src/main/importer.ts` | New config shape (`heic.mode`), error reporting for pHash/conversion |
+| `src/main/indexer.ts` | Error collection, `createUniversalPhashComputer()` as default |
+| `src/main/config.ts` | New defaults (`heic.mode = 'keep'`), backward compat migration |
+| `src/shared/types/index.ts` | `AppConfig.heic`, `IndexResult.errors` |
+| `tests/main/heic.test.ts` | Complete rewrite for heic-decode |
+| `tests/main/importer.test.ts` | New config shape, both modes, error reporting |
+| `tests/main/indexer.test.ts` | Error reporting tests |
+| `tests/main/config.test.ts` | Migration tests |
+| `tests/main/ipc/config-handlers.test.ts` | Updated config shape |
+| `tests/main/ipc/import-handlers.test.ts` | Updated config shape |
 
-**Recommended approach**: replace `ffmpeg-static` with `@ffmpeg-installer/ffmpeg`.
+## Test results
 
-`@ffmpeg-installer/ffmpeg` provides platform-specific binaries as separate optional npm dependencies
-(similar to `sharp`'s model). During `electron-builder --win` on the Ubuntu CI runner, npm installs
-the Windows binary via the optional dep `@ffmpeg-installer/ffmpeg-win32-x64`. The Linux binary is
-never packaged into the Windows installer.
+- **394 tests passing**, 100% coverage
+- Lint clean
+- All existing tests updated for new config shape and error reporting
 
-Migration:
-- `npm uninstall ffmpeg-static`
-- `npm install @ffmpeg-installer/ffmpeg`
-- Update `getFfmpegPath()` in `heic.ts`: `require('@ffmpeg-installer/ffmpeg').path`
-- Update `asarUnpack` in `package.json` to point to the new binary location
-- Verify on Windows (dev + packaged)
+## Key technical decisions
 
-### 2. Fix Bug B — Full-res conversion via probe step
+- **heic-decode v2.x API**: uses `{ buffer: ... }` (not `{ data: ... }` from v1.x)
+- **No JPEG intermediate for pHash**: RGBA→gray produces compatible hashes (max 1 bit diff)
+- **Injectable dependencies**: `HeicDecodeFn`, `HeicConverter`, `PhashComputer` all injectable for testing
+- **`isHeicFile()` helper**: shared between converter and phash computer
 
-When `heic.mode === 'convert'`, the conversion must output the full native resolution:
+## Deferred
 
-**Two-step approach**:
-1. Parse the ffmpeg info output (stderr from `ffmpeg -i FILE`) to extract the Tile Grid dimensions
-   from the `Stream group ... Tile Grid: ... NxM` line.
-2. Use those dimensions in the scale filter: `ffmpeg -i FILE -vf scale=N:M -update 1 -q:v Q DEST -y`
-
-This requires 2 ffmpeg spawns per HEIC file for conversion, but conversion is an explicit opt-in.
-For pHash computation (default case), the single spawn without scale filter is retained.
-
-### 3. Implement new HEIC mode setting
-
-- Update `AppConfig` type in `src/shared/types/index.ts`: replace `heicConversion` with `heic`
-- Update `configDefaults` in config module: `heic.mode = 'keep'`
-- Update `buildImportPlan` planner: use `heic.mode` instead of `heicConversion.enabled`
-  - `'keep'`: copy HEIC file directly (no staging, no ffmpeg for conversion)
-  - `'convert'`: use two-step ffmpeg with probe dimensions → scale → staged JPEG
-- Update `executeImportPlan` executor: handle `'keep'` mode (copy, not move staged file)
-- Update `Settings.svelte` (or equivalent UI): add radio/toggle for HEIC mode
-- Update pHash computation: **unchanged** — always uses the fast single-spawn (no scale filter)
-
-### 4. Fix error reporting (Bug C from initial analysis)
-
-- When ffmpeg fails during pHash computation, log the error and surface it to the user
-- Indexer: add `failedFiles: Array<{ path: string; error: string }>` to `IndexResult`
-- Planner: when HEIC staging fails, set `status = 'error'` instead of silently setting `phash = null`
-
-## HEIC pHash — confirmed working approach (do NOT change)
-
-Investigation confirmed (158 files, all iPhone HEIC):
-- `ffmpeg -i FILE -frames:v 1 tempPath -y` reliably outputs a 512×512 first tile
-- pHash from 512×512 tile is **identical** to pHash from full 3024×4032 image (Hamming 0 bits)
-- 22/158 files differ by 1 bit between the tile decode and quality-converted JPEG (still correct)
-- This approach is fast and correct for duplicate detection — no changes needed
-
-## Tests
-
-- 100% coverage target maintained
-- Unit tests for new `heic.mode` config (mock config)
-- Planner tests: `'keep'` mode copies HEIC directly, no staging; `'convert'` mode uses two-step probe
-- Executor tests: `'keep'` mode for HEIC entry (no staged path, direct copy)
-- Tests for `getFfmpegPath` with new `@ffmpeg-installer/ffmpeg` path
-- Tests for dimension probe parser (parse ffmpeg stderr for Tile Grid dimensions)
-
-## Notes
-
-- TASK-037 introduced ffmpeg for HEIC but was only tested on Linux/WSL — the Windows packaging
-  scenario and the tile grid issue were not covered
-- Bug B (512×512 conversion) was not caught because the import was failing on Windows before
-  reaching the conversion step, and development testing was on Linux where the import succeeded
-  but the output quality was not verified
-- The Picker API flow (TASK-032–035) is confirmed working on Windows
+- TASK-040: Native C addon (libheif) for faster HEIC decode — optional future optimization
+- Settings UI for `heic.mode` toggle — follow-up task

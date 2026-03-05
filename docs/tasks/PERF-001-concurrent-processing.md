@@ -4,11 +4,11 @@
 P3 — Significant UX improvement for large collections, no correctness impact
 
 ## Dependency
-**Must be implemented after TASK-037** (ffmpeg-based HEIC processing).
-- TASK-037 rewrites the per-file logic in all three affected modules
-- TASK-037's ffmpeg approach enables true OS-level parallelism (child processes); the current
-  WASM approach (heic-decode) would not benefit from in-thread concurrency
-- Implementing PERF-001 before TASK-037 risks large merge conflicts
+**Must be implemented after TASK-039** (heic-decode-based HEIC processing).
+- TASK-039 rewrites the per-file logic in all three affected modules (replacing ffmpeg with heic-decode)
+- heic-decode (WASM) + sharp (native addon) both release the V8 lock during computation,
+  enabling true parallelism via `Promise.all` within a single worker thread
+- Implementing PERF-001 before TASK-039 risks large merge conflicts
 
 ---
 
@@ -18,8 +18,8 @@ All three heavy workflows process files **strictly sequentially**, leaving N-1 C
 
 | Workflow | Main bottleneck | Files/s estimate (HEIC, post-TASK-037) |
 |---|---|---|
-| **Indexer** (`runIndexer`) | pHash (ffmpeg → sharp) | ~2/s on 1 core |
-| **Planner** (`buildImportPlan`) | pHash + staging (ffmpeg) | ~2/s on 1 core |
+| **Indexer** (`runIndexer`) | pHash (heic-decode WASM → sharp) | ~2.5/s on 1 core (HEIC ~393ms/file) |
+| **Planner** (`buildImportPlan`) | pHash + staging (heic-decode) | ~2.5/s on 1 core |
 | **Executor** (`executeImportPlan`) | file copy/convert | I/O bound |
 
 On a typical MacBook (8 cores) or Windows desktop (6-16 cores), parallelizing to N workers
@@ -34,7 +34,7 @@ gives a theoretical N× speedup on CPU-bound operations.
 async operations within each worker thread:
 
 - `sharp` (native addon): releases the V8 lock → true native parallelism
-- `ffmpeg` (child_process): runs as a separate OS process → true parallelism
+- `heic-decode` (WASM): computation-heavy WASM calls release the event loop → concurrent execution
 - `better-sqlite3` (synchronous): DB calls naturally serialize in a single thread → no
   concurrent write issues
 
@@ -152,9 +152,10 @@ Finally (sequential):
 - **`isCancelled` check**: checked before each entry in Phase 1 workers. On cancellation, drain
   the in-flight operations cleanly before returning.
 
-**Note**: after TASK-037, HEIC entries use `stagedPath` (file move, very fast). The executor's
-bottleneck for large collections shifts to I/O (copying large JPEGs/RAWs). Parallelism helps
-most when source and library are on different physical devices (e.g. SD card → NAS).
+**Note**: after TASK-039, HEIC entries in `'convert'` mode use `stagedPath` (file move, very fast).
+In `'keep'` mode (default), HEIC files are copied directly. The executor's bottleneck for large
+collections is I/O (copying files). Parallelism helps most when source and library are on
+different physical devices (e.g. SD card → NAS).
 
 ---
 
@@ -193,9 +194,9 @@ Not exposed as a user setting in v1 — can be made configurable later if needed
 
 | Workflow | Current (1 core) | With PERF-001 (8 cores) | Note |
 |---|---|---|---|
-| Indexer — 1000 JPEGs | ~5 min | ~40 s | pHash is CPU-bound |
-| Indexer — 1000 HEICs | ~8 min | ~1 min | ffmpeg CPU-bound (post-TASK-037) |
-| Planner — 100 HEICs | ~50 s | ~8 s | ffmpeg CPU-bound |
+| Indexer — 1000 JPEGs | ~5 min | ~40 s | pHash is CPU-bound (sharp) |
+| Indexer — 1000 HEICs | ~6.5 min | ~50 s | heic-decode ~393ms + sharp ~50ms per file |
+| Planner — 100 HEICs | ~45 s | ~6 s | heic-decode CPU-bound |
 | Executor — 100 HEICs (staged) | ~5 s | ~2 s | move is fast, limited by filesystem |
 
 ---
