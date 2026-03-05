@@ -12,6 +12,7 @@ import {
 import { readExifDate, defaultExifLoader, type ExifLoader } from './exif'
 import { type PhashComputer, type PhashResult } from './phash'
 import { getDestinationPath } from '../shared/library-path'
+import { withConcurrency, DEFAULT_CONCURRENCY } from './concurrency'
 import type { KeePicDatabase } from './db/database'
 import type {
   AppConfig,
@@ -129,6 +130,7 @@ export interface PlannerOptions {
   convertHeic?: HeicConverter
   stagingDir?: string
   mkdirp?: (path: string) => void
+  concurrency?: number
 }
 
 /**
@@ -143,6 +145,19 @@ export interface PlannerOptions {
  * The resulting ImportPlan is returned to the renderer for user review
  * before any write operation takes place.
  */
+/** Phase 1 result for a single candidate file. */
+interface PlanPhase1Result {
+  srcPath: string
+  phashResult: PhashResult | null
+  exifDate: Date
+  exifSource: string
+  fileSize: number
+  destFilename: string
+  isConvertHeic: boolean
+  stagedPath?: string
+  errorMessage?: string
+}
+
 export async function buildImportPlan(
   sourceFolder: string,
   libraryPath: string,
@@ -157,68 +172,90 @@ export async function buildImportPlan(
   const convertHeicFn = options.convertHeic ?? createHeicConverter()
   const stagingDir = options.stagingDir ?? join(tmpdir(), `keepic-plan-${randomUUID()}`)
   const mkdirpFn = options.mkdirp ?? ((p: string) => mkdirSync(p, { recursive: true }))
+  const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY
 
   let stagingDirCreated = false
 
   const { candidates, livePhotoMovs } = scanSourceFiles(sourceFolder)
   const total = candidates.length
-  const entries: ImportPlanEntry[] = []
 
-  for (let i = 0; i < candidates.length; i++) {
-    const srcPath = candidates[i]
-    onProgress({ total, processed: i, currentFile: srcPath })
+  // Phase 1: parallel — stat, pHash, EXIF, HEIC staging
+  const phase1Results = await withConcurrency(
+    candidates,
+    concurrency,
+    async (srcPath): Promise<PlanPhase1Result> => {
+      const stat = statSync(srcPath)
+      const isHeic = isHeicFile(srcPath)
+      const convertHeic = isHeic && config.heic.mode === 'convert'
 
-    const stat = statSync(srcPath)
-    const isHeic = isHeicFile(srcPath)
-    const convertHeic = isHeic && config.heic.mode === 'convert'
+      let phashResult: PhashResult | null
+      let stagedPath: string | undefined
+      let errorMessage: string | undefined
 
-    let phashResult: PhashResult | null
-    let stagedPath: string | undefined
-    let errorMessage: string | undefined
-
-    if (convertHeic) {
-      // Stage HEIC → JPEG once in planner; compute pHash from the staged JPEG.
-      // The executor will then move the staged file instead of re-converting.
-      if (!stagingDirCreated) {
-        mkdirpFn(stagingDir)
-        stagingDirCreated = true
+      if (convertHeic) {
+        if (!stagingDirCreated) {
+          mkdirpFn(stagingDir)
+          stagingDirCreated = true
+        }
+        const srcExt = extname(srcPath).toLowerCase()
+        const stagedFilename = `${randomUUID()}-${basename(srcPath, srcExt)}.jpg`
+        const candidateStagedPath = join(stagingDir, stagedFilename)
+        try {
+          await convertHeicFn(srcPath, candidateStagedPath, config.heic.jpegQuality)
+          stagedPath = candidateStagedPath
+          phashResult = await computePhash(stagedPath)
+        } catch (err) {
+          phashResult = null
+          errorMessage = `HEIC conversion failed: ${err instanceof Error ? err.message : String(err)}`
+        }
+      } else {
+        try {
+          phashResult = await computePhash(srcPath)
+        } catch (err) {
+          phashResult = null
+          errorMessage = `pHash computation failed: ${err instanceof Error ? err.message : String(err)}`
+        }
       }
-      const srcExt = extname(srcPath).toLowerCase()
-      const stagedFilename = `${randomUUID()}-${basename(srcPath, srcExt)}.jpg`
-      const candidateStagedPath = join(stagingDir, stagedFilename)
-      try {
-        await convertHeicFn(srcPath, candidateStagedPath, config.heic.jpegQuality)
-        stagedPath = candidateStagedPath
-        phashResult = await computePhash(stagedPath)
-      } catch (err) {
-        phashResult = null
-        errorMessage = `HEIC conversion failed: ${err instanceof Error ? err.message : String(err)}`
-      }
-    } else {
-      try {
-        phashResult = await computePhash(srcPath)
-      } catch (err) {
-        phashResult = null
-        errorMessage = `pHash computation failed: ${err instanceof Error ? err.message : String(err)}`
+
+      const exifResult = await readExifDate(srcPath, stat.mtime, loadExif)
+
+      const srcBasename = basename(srcPath)
+      const srcExt2 = extname(srcPath).toLowerCase()
+      const destFilename = convertHeic
+        ? srcBasename.slice(0, -srcExt2.length) + '.jpg'
+        : srcBasename
+
+      return {
+        srcPath,
+        phashResult,
+        exifDate: exifResult.date,
+        exifSource: exifResult.source,
+        fileSize: stat.size,
+        destFilename,
+        isConvertHeic: convertHeic,
+        stagedPath,
+        errorMessage
       }
     }
+  )
 
-    // Extract capture date via EXIF fallback chain
-    const exifResult = await readExifDate(srcPath, stat.mtime, loadExif)
+  // Phase 2: sequential — duplicate check, collision resolution, progress
+  const entries: ImportPlanEntry[] = []
+  const seenDestPaths = new Set<string>()
 
-    // Determine destination filename (rename HEIC → JPG if conversion enabled)
-    const srcBasename = basename(srcPath)
-    const srcExt2 = extname(srcPath).toLowerCase()
-    const destFilename = convertHeic ? srcBasename.slice(0, -srcExt2.length) + '.jpg' : srcBasename
+  for (let i = 0; i < phase1Results.length; i++) {
+    const r = phase1Results[i]
+    onProgress({ total, processed: i, currentFile: r.srcPath })
 
     // Check for duplicate (pHash match in the existing library index)
-    let status: ImportEntryStatus = errorMessage ? 'error' : 'ready'
+    let status: ImportEntryStatus = r.errorMessage ? 'error' : 'ready'
     let duplicateOf: string | undefined
+    let errorMessage = r.errorMessage
 
-    if (phashResult?.phash) {
+    if (r.phashResult?.phash) {
       const match = db.db
         .prepare('SELECT path FROM photos WHERE phash = ? AND deleted_at IS NULL LIMIT 1')
-        .get(phashResult.phash) as { path: string } | undefined
+        .get(r.phashResult.phash) as { path: string } | undefined
       if (match) {
         status = 'duplicate'
         duplicateOf = match.path
@@ -226,15 +263,19 @@ export async function buildImportPlan(
     }
 
     // Compute destination path and resolve collisions (only for non-duplicates)
-    let destRelPath = getDestinationPath(exifResult.date, destFilename)
+    let destRelPath = getDestinationPath(r.exifDate, r.destFilename)
     let originalDestination: string | undefined
 
     if (status === 'ready') {
-      if (checkExists(join(libraryPath, destRelPath))) {
-        const resolved = resolveCollision(libraryPath, destRelPath, checkExists)
+      // Check both filesystem and already-claimed paths in this plan
+      const destAbsPath = join(libraryPath, destRelPath)
+      if (checkExists(destAbsPath) || seenDestPaths.has(destRelPath)) {
+        const resolved = resolveCollision(libraryPath, destRelPath, (p) =>
+          checkExists(p) || seenDestPaths.has(p.replace(libraryPath + '/', '').replace(libraryPath + '\\', ''))
+        )
         if (resolved === null) {
           status = 'error'
-          errorMessage = `No free filename slot found after 99 attempts for ${destFilename}`
+          errorMessage = `No free filename slot found after 99 attempts for ${r.destFilename}`
         } else {
           originalDestination = destRelPath
           destRelPath = resolved
@@ -243,23 +284,27 @@ export async function buildImportPlan(
       }
     }
 
+    if (status === 'ready' || status === 'collision') {
+      seenDestPaths.add(destRelPath)
+    }
+
     entries.push({
-      sourcePath: srcPath,
+      sourcePath: r.srcPath,
       destinationRelativePath: destRelPath,
-      dateTaken: exifResult.date.toISOString(),
-      dateTakenSource: exifResult.source as DateSource,
-      phash: phashResult?.phash ?? null,
-      width: phashResult?.width ?? null,
-      height: phashResult?.height ?? null,
-      fileSize: stat.size,
+      dateTaken: r.exifDate.toISOString(),
+      dateTakenSource: r.exifSource as DateSource,
+      phash: r.phashResult?.phash ?? null,
+      width: r.phashResult?.width ?? null,
+      height: r.phashResult?.height ?? null,
+      fileSize: r.fileSize,
       status,
       duplicateOf,
       originalDestination,
       errorMessage,
-      stagedPath
+      stagedPath: r.stagedPath
     })
 
-    onProgress({ total, processed: i + 1, currentFile: srcPath })
+    onProgress({ total, processed: i + 1, currentFile: r.srcPath })
   }
 
   return {
@@ -372,6 +417,7 @@ export interface ExecutorOptions {
   rmTempDir?: (path: string) => void
   rmStagedFile?: (path: string) => void
   isCancelled?: () => boolean
+  concurrency?: number
 }
 
 /**
@@ -383,6 +429,13 @@ export interface ExecutorOptions {
  * - The temp directory is always cleaned up on completion or failure.
  * - No source file is ever modified.
  */
+/** Phase 1 result for a single executor entry. */
+interface ExecuteFileResult {
+  entry: ImportPlanEntry
+  fileStat?: { size: number; mtime: Date }
+  error?: string
+}
+
 export async function executeImportPlan(
   plan: ImportPlan,
   libraryPath: string,
@@ -400,6 +453,7 @@ export async function executeImportPlan(
   const rmTempDirFn = options.rmTempDir ?? ((p) => rmSync(p, { recursive: true, force: true }))
   const rmStagedFileFn = options.rmStagedFile ?? ((p) => rmSync(p, { force: true }))
   const isCancelled = options.isCancelled ?? (() => false)
+  const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY
 
   const now = new Date().toISOString()
   const jobId = createImportJob(db, 'local', now)
@@ -424,114 +478,127 @@ export async function executeImportPlan(
   let imported = 0
   let status: ImportStatus = 'completed'
 
-  try {
-    for (let i = 0; i < entriesToProcess.length; i++) {
-      if (isCancelled()) {
-        status = 'cancelled'
-        break
-      }
+  // Phase 1: parallel — copy/convert/move files to library
+  // Each worker checks isCancelled() before processing its entry
+  const phase1Results = await withConcurrency(
+      entriesToProcess,
+      concurrency,
+      async (entry): Promise<ExecuteFileResult> => {
+        if (isCancelled()) {
+          return { entry, error: undefined }
+        }
 
-      const entry = entriesToProcess[i]
-      onProgress({
-        total,
-        processed: i,
-        imported,
-        skipped: duplicateCount,
-        duplicates: duplicateCount,
-        livePhotosDiscarded: plan.livePhotosDiscarded,
-        currentFile: entry.sourcePath
-      })
+        try {
+          const isHeic = isHeicFile(entry.sourcePath)
+          const doConvert = isHeic && config.heic.mode === 'convert'
 
-      try {
-        const isHeic = isHeicFile(entry.sourcePath)
-        const doConvert = isHeic && config.heic.mode === 'convert'
+          const destAbsPath = join(libraryPath, entry.destinationRelativePath)
 
-        // Create destination folder in library if needed
-        const destAbsPath = join(libraryPath, entry.destinationRelativePath)
-
-        if (entry.stagedPath) {
-          // Planner pre-staged a JPEG — move it directly (no re-conversion)
-          mkdirpFn(dirname(destAbsPath))
-          moveFileFn(entry.stagedPath, destAbsPath)
-        } else {
-          // Unique temp filename to avoid collisions between concurrent imports
-          const tempFilename = `${randomUUID()}-${basename(entry.destinationRelativePath)}`
-          const tempPath = join(tempDir, tempFilename)
-
-          // Stage: copy/convert source → temp
-          if (doConvert) {
-            await convertHeicFn(entry.sourcePath, tempPath, config.heic.jpegQuality)
+          if (entry.stagedPath) {
+            mkdirpFn(dirname(destAbsPath))
+            moveFileFn(entry.stagedPath, destAbsPath)
           } else {
-            copyFileFn(entry.sourcePath, tempPath)
+            const tempFilename = `${randomUUID()}-${basename(entry.destinationRelativePath)}`
+            const tempPath = join(tempDir, tempFilename)
+
+            if (doConvert) {
+              await convertHeicFn(entry.sourcePath, tempPath, config.heic.jpegQuality)
+            } else {
+              copyFileFn(entry.sourcePath, tempPath)
+            }
+
+            mkdirpFn(dirname(destAbsPath))
+            moveFileFn(tempPath, destAbsPath)
           }
 
-          mkdirpFn(dirname(destAbsPath))
-          moveFileFn(tempPath, destAbsPath)
-        }
-
-        // DB upsert
-        const fileStat = statFileFn(destAbsPath)
-        const importedAt = new Date().toISOString()
-        upsertImportedPhoto(db, {
-          relativePath: entry.destinationRelativePath,
-          filename: basename(entry.destinationRelativePath),
-          phash: entry.phash,
-          dateTaken: entry.dateTaken,
-          dateTakenSource: entry.dateTakenSource,
-          width: entry.width,
-          height: entry.height,
-          fileSize: fileStat.size,
-          fileMtime: fileStat.mtime.toISOString(),
-          now: importedAt
-        })
-
-        imported++
-      } catch (err) {
-        errors.push({
-          sourcePath: entry.sourcePath,
-          error: err instanceof Error ? err.message : String(err)
-        })
-      }
-
-      onProgress({
-        total,
-        processed: i + 1,
-        imported,
-        skipped: duplicateCount,
-        duplicates: duplicateCount,
-        livePhotosDiscarded: plan.livePhotosDiscarded,
-        currentFile: entry.sourcePath
-      })
-    }
-  } finally {
-    // Clean up any staged files that were not moved (errors, cancellation)
-    // rmStagedFileFn uses force:true so it silently ignores already-moved files
-    for (const entry of entriesToProcess) {
-      if (entry.stagedPath) {
-        try {
-          rmStagedFileFn(entry.stagedPath)
-        } catch {
-          // Ignore cleanup errors
+          const fileStat = statFileFn(destAbsPath)
+          return { entry, fileStat }
+        } catch (err) {
+          return {
+            entry,
+            error: err instanceof Error ? err.message : String(err)
+          }
         }
       }
-    }
+    )
 
-    // Always clean up executor temp dir
-    try {
-      rmTempDirFn(tempDir)
-    } catch {
-      // Ignore cleanup errors — temp files will be removed on next OS cleanup
-    }
+  // Phase 2: sequential — DB upserts + progress reporting
+  for (let i = 0; i < phase1Results.length; i++) {
+    const result = phase1Results[i]
 
-    const finishedAt = new Date().toISOString()
-    updateImportJob(db, jobId, {
-      status,
+    // Report "before" progress
+    onProgress({
+      total,
+      processed: i,
       imported,
       skipped: duplicateCount,
+      duplicates: duplicateCount,
       livePhotosDiscarded: plan.livePhotosDiscarded,
-      finishedAt
+      currentFile: result.entry.sourcePath
+    })
+
+    if (isCancelled() && !result.fileStat) {
+      // This entry was not processed due to cancellation
+      status = 'cancelled'
+    } else if (result.error) {
+      errors.push({
+        sourcePath: result.entry.sourcePath,
+        error: result.error
+      })
+    } else if (result.fileStat) {
+      const importedAt = new Date().toISOString()
+      upsertImportedPhoto(db, {
+        relativePath: result.entry.destinationRelativePath,
+        filename: basename(result.entry.destinationRelativePath),
+        phash: result.entry.phash,
+        dateTaken: result.entry.dateTaken,
+        dateTakenSource: result.entry.dateTakenSource,
+        width: result.entry.width,
+        height: result.entry.height,
+        fileSize: result.fileStat.size,
+        fileMtime: result.fileStat.mtime.toISOString(),
+        now: importedAt
+      })
+      imported++
+    }
+
+    // Report "after" progress
+    onProgress({
+      total,
+      processed: i + 1,
+      imported,
+      skipped: duplicateCount,
+      duplicates: duplicateCount,
+      livePhotosDiscarded: plan.livePhotosDiscarded,
+      currentFile: result.entry.sourcePath
     })
   }
+
+  // Cleanup
+  for (const entry of entriesToProcess) {
+    if (entry.stagedPath) {
+      try {
+        rmStagedFileFn(entry.stagedPath)
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+  }
+
+  try {
+    rmTempDirFn(tempDir)
+  } catch {
+    // Ignore cleanup errors — temp files will be removed on next OS cleanup
+  }
+
+  const finishedAt = new Date().toISOString()
+  updateImportJob(db, jobId, {
+    status,
+    imported,
+    skipped: duplicateCount,
+    livePhotosDiscarded: plan.livePhotosDiscarded,
+    finishedAt
+  })
 
   return {
     imported,

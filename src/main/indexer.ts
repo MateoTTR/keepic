@@ -2,8 +2,9 @@ import { readdirSync, statSync, type Dirent } from 'fs'
 import { join, basename, extname } from 'path'
 import { isYearFolder } from '../shared/library-path'
 import { readExifDate, defaultExifLoader, type ExifLoader } from './exif'
-import { type PhashComputer } from './phash'
+import { type PhashComputer, type PhashResult } from './phash'
 import { createUniversalPhashComputer } from './heic'
+import { withConcurrency, DEFAULT_CONCURRENCY } from './concurrency'
 import type { KeePicDatabase } from './db/database'
 import type { IndexProgress, IndexResult } from '../shared/types'
 
@@ -165,20 +166,34 @@ function markDeleted(db: KeePicDatabase, presentPaths: Set<string>, now: string)
 export interface RunIndexerOptions {
   loadExif?: ExifLoader
   computePhash?: PhashComputer
+  concurrency?: number
+}
+
+/** Result of Phase 1 processing for a single file. */
+interface IndexFileResult {
+  relativePath: string
+  skipped: true | {
+    absolutePath: string
+    phashResult: PhashResult | null
+    exifDate: Date
+    exifSource: string
+    fileSize: number
+    fileMtime: string
+    error?: { file: string; error: string }
+  }
 }
 
 /**
  * Scans the shared library folder and upserts records into the local SQLite index.
  *
- * - Files whose path + mtime are unchanged are skipped.
- * - Files on disk whose DB record was previously marked deleted are revived.
- * - Files in the DB that are no longer on disk are marked with `deleted_at`.
- * - Files that fail pHash computation are indexed with phash=null and reported in errors.
+ * Uses a two-phase approach for performance:
+ * - Phase 1 (parallel): stat + mtime check + pHash + EXIF (CPU-bound, N workers)
+ * - Phase 2 (sequential): DB upserts + progress reporting (must be ordered)
  *
  * @param libraryPath - Absolute path to the shared library root.
  * @param db          - Open KeePicDatabase instance.
  * @param onProgress  - Called after each processed file.
- * @param options     - Injectable ExifLoader and PhashComputer (for testing).
+ * @param options     - Injectable ExifLoader, PhashComputer, and concurrency level.
  */
 export async function runIndexer(
   libraryPath: string,
@@ -188,57 +203,87 @@ export async function runIndexer(
 ): Promise<IndexResult> {
   const loadExif = options.loadExif ?? defaultExifLoader
   const computePhash = options.computePhash ?? createUniversalPhashComputer()
+  const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY
 
   const relativePaths = scanLibraryFiles(libraryPath)
   const total = relativePaths.length
+
+  // Phase 1: parallel — stat, mtime check (DB read), pHash, EXIF
+  const phase1Results = await withConcurrency(
+    relativePaths,
+    concurrency,
+    async (relativePath): Promise<IndexFileResult> => {
+      const absolutePath = join(libraryPath, relativePath)
+      const stat = statSync(absolutePath)
+      const fileMtime = stat.mtime.toISOString()
+
+      const storedMtime = getStoredMtime(db, relativePath)
+      if (storedMtime === fileMtime) {
+        return { relativePath, skipped: true }
+      }
+
+      let phashResult: PhashResult | null = null
+      let error: { file: string; error: string } | undefined
+      try {
+        phashResult = await computePhash(absolutePath)
+      } catch (err) {
+        error = {
+          file: relativePath,
+          error: err instanceof Error ? err.message : String(err)
+        }
+      }
+
+      const exifResult = await readExifDate(relativePath, stat.mtime, loadExif)
+
+      return {
+        relativePath,
+        skipped: {
+          absolutePath,
+          phashResult,
+          exifDate: exifResult.date,
+          exifSource: exifResult.source,
+          fileSize: stat.size,
+          fileMtime,
+          error
+        }
+      }
+    }
+  )
+
+  // Phase 2: sequential — DB writes + progress reporting
   const presentPaths = new Set<string>()
   const errors: Array<{ file: string; error: string }> = []
-
   let indexed = 0
   let skipped = 0
 
-  for (let i = 0; i < relativePaths.length; i++) {
-    const relativePath = relativePaths[i]
-    presentPaths.add(relativePath)
+  for (let i = 0; i < phase1Results.length; i++) {
+    const result = phase1Results[i]
+    presentPaths.add(result.relativePath)
 
-    const absolutePath = join(libraryPath, relativePath)
-    const stat = statSync(absolutePath)
-    const fileMtime = stat.mtime.toISOString()
-
-    const storedMtime = getStoredMtime(db, relativePath)
-    if (storedMtime === fileMtime) {
+    if (result.skipped === true) {
       skipped++
-      onProgress({ total, processed: i + 1, indexed, skipped })
-      continue
-    }
+    } else {
+      const data = result.skipped
+      if (data.error) {
+        errors.push(data.error)
+      }
 
-    // Compute pHash — errors are caught and reported, not thrown
-    let phashResult: Awaited<ReturnType<PhashComputer>> = null
-    try {
-      phashResult = await computePhash(absolutePath)
-    } catch (err) {
-      errors.push({
-        file: relativePath,
-        error: err instanceof Error ? err.message : String(err)
+      const now = new Date().toISOString()
+      upsertPhoto(db, {
+        path: result.relativePath,
+        filename: basename(result.relativePath),
+        phash: data.phashResult?.phash ?? null,
+        dateTaken: data.exifDate.toISOString(),
+        dateTakenSource: data.exifSource,
+        width: data.phashResult?.width ?? null,
+        height: data.phashResult?.height ?? null,
+        fileSize: data.fileSize,
+        fileMtime: data.fileMtime,
+        now
       })
+      indexed++
     }
 
-    const exifResult = await readExifDate(relativePath, stat.mtime, loadExif)
-
-    const now = new Date().toISOString()
-    upsertPhoto(db, {
-      path: relativePath,
-      filename: basename(relativePath),
-      phash: phashResult?.phash ?? null,
-      dateTaken: exifResult.date.toISOString(),
-      dateTakenSource: exifResult.source,
-      width: phashResult?.width ?? null,
-      height: phashResult?.height ?? null,
-      fileSize: stat.size,
-      fileMtime,
-      now
-    })
-    indexed++
     onProgress({ total, processed: i + 1, indexed, skipped })
   }
 
