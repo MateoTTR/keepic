@@ -136,7 +136,7 @@
 
 | ID | Title | Priority | Status | Session |
 |---|---|---|---|---|
-| [PERF-001](PERF-001-concurrent-processing.md) | Concurrent processing — parallelize indexer, planner, executor (N workers = `os.cpus().length`) | P3 | `[ ]` | — |
+| [PERF-001](PERF-001-concurrent-processing.md) | Concurrent processing — parallelize indexer, planner, executor (N workers = `os.cpus().length`) | P3 | `[x]` | 2026-03-05-session-034 |
 
 ---
 
