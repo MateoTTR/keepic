@@ -86,7 +86,7 @@ describe('handlePlan', () => {
       '/source',
       '/library',
       '/db',
-      { libraryPath: null, heicConversion: { enabled: false, jpegQuality: 90 } },
+      { libraryPath: null, heic: { mode: 'keep' as const, jpegQuality: 90 } },
       () => {},
       '/fake/planner.worker.js',
       factory
@@ -107,7 +107,7 @@ describe('handlePlan', () => {
       '/source',
       '/library',
       '/db',
-      { libraryPath: null, heicConversion: { enabled: false, jpegQuality: 90 } },
+      { libraryPath: null, heic: { mode: 'keep' as const, jpegQuality: 90 } },
       (p) => received.push(p),
       '/fake/planner.worker.js',
       factory
@@ -124,7 +124,7 @@ describe('handlePlan', () => {
       '/source',
       '/library',
       '/db',
-      { libraryPath: null, heicConversion: { enabled: false, jpegQuality: 90 } },
+      { libraryPath: null, heic: { mode: 'keep' as const, jpegQuality: 90 } },
       () => {},
       '/fake/planner.worker.js',
       factory
@@ -144,7 +144,7 @@ describe('handlePlan', () => {
       '/source',
       '/library',
       '/db',
-      { libraryPath: null, heicConversion: { enabled: false, jpegQuality: 90 } },
+      { libraryPath: null, heic: { mode: 'keep' as const, jpegQuality: 90 } },
       () => {},
       '/fake/planner.worker.js',
       factory
@@ -164,7 +164,7 @@ describe('handleExecute', () => {
     libraryPath: '/library',
     dbPath: '/db',
     userDataPath: '/userData',
-    config: { libraryPath: '/library', heicConversion: { enabled: false, jpegQuality: 90 } },
+    config: { libraryPath: '/library', heic: { mode: 'keep' as const, jpegQuality: 90 } },
     importerWorkerPath: '/fake/importer.worker.js'
   } as const
 

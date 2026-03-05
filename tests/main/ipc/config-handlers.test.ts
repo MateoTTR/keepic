@@ -44,7 +44,7 @@ describe('handleGetConfig', () => {
   it('returns the current config', () => {
     const result = handleGetConfig(cfg)
     expect(result.libraryPath).toBeNull()
-    expect(result.heicConversion.enabled).toBe(true)
+    expect(result.heic.mode).toBe('keep')
   })
 
   it('reflects an updated library path', () => {

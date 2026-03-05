@@ -2,9 +2,15 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, s
 import { basename, dirname, extname, join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
-import { isLivePhotoMov, defaultHeicConverter, type HeicConverter } from './heic'
+import {
+  isLivePhotoMov,
+  isHeicFile,
+  createHeicConverter,
+  createUniversalPhashComputer,
+  type HeicConverter
+} from './heic'
 import { readExifDate, defaultExifLoader, type ExifLoader } from './exif'
-import { defaultPhashComputer, type PhashComputer, type PhashResult } from './phash'
+import { type PhashComputer, type PhashResult } from './phash'
 import { getDestinationPath } from '../shared/library-path'
 import type { KeePicDatabase } from './db/database'
 import type {
@@ -146,9 +152,9 @@ export async function buildImportPlan(
   options: PlannerOptions = {}
 ): Promise<ImportPlan> {
   const loadExif = options.loadExif ?? defaultExifLoader
-  const computePhash = options.computePhash ?? defaultPhashComputer
+  const computePhash = options.computePhash ?? createUniversalPhashComputer()
   const checkExists = options.checkExists ?? existsSync
-  const convertHeicFn = options.convertHeic ?? defaultHeicConverter
+  const convertHeicFn = options.convertHeic ?? createHeicConverter()
   const stagingDir = options.stagingDir ?? join(tmpdir(), `keepic-plan-${randomUUID()}`)
   const mkdirpFn = options.mkdirp ?? ((p: string) => mkdirSync(p, { recursive: true }))
 
@@ -163,12 +169,12 @@ export async function buildImportPlan(
     onProgress({ total, processed: i, currentFile: srcPath })
 
     const stat = statSync(srcPath)
-    const srcExt = extname(srcPath).toLowerCase()
-    const isHeic = srcExt === '.heic' || srcExt === '.heif'
-    const convertHeic = isHeic && config.heicConversion.enabled
+    const isHeic = isHeicFile(srcPath)
+    const convertHeic = isHeic && config.heic.mode === 'convert'
 
     let phashResult: PhashResult | null
     let stagedPath: string | undefined
+    let errorMessage: string | undefined
 
     if (convertHeic) {
       // Stage HEIC → JPEG once in planner; compute pHash from the staged JPEG.
@@ -177,18 +183,24 @@ export async function buildImportPlan(
         mkdirpFn(stagingDir)
         stagingDirCreated = true
       }
+      const srcExt = extname(srcPath).toLowerCase()
       const stagedFilename = `${randomUUID()}-${basename(srcPath, srcExt)}.jpg`
       const candidateStagedPath = join(stagingDir, stagedFilename)
       try {
-        await convertHeicFn(srcPath, candidateStagedPath, config.heicConversion.jpegQuality)
+        await convertHeicFn(srcPath, candidateStagedPath, config.heic.jpegQuality)
         stagedPath = candidateStagedPath
         phashResult = await computePhash(stagedPath)
-      } catch {
-        // Staging failed — fall back to no staging; executor will retry conversion
+      } catch (err) {
         phashResult = null
+        errorMessage = `HEIC conversion failed: ${err instanceof Error ? err.message : String(err)}`
       }
     } else {
-      phashResult = await computePhash(srcPath)
+      try {
+        phashResult = await computePhash(srcPath)
+      } catch (err) {
+        phashResult = null
+        errorMessage = `pHash computation failed: ${err instanceof Error ? err.message : String(err)}`
+      }
     }
 
     // Extract capture date via EXIF fallback chain
@@ -196,10 +208,11 @@ export async function buildImportPlan(
 
     // Determine destination filename (rename HEIC → JPG if conversion enabled)
     const srcBasename = basename(srcPath)
-    const destFilename = convertHeic ? srcBasename.slice(0, -srcExt.length) + '.jpg' : srcBasename
+    const srcExt2 = extname(srcPath).toLowerCase()
+    const destFilename = convertHeic ? srcBasename.slice(0, -srcExt2.length) + '.jpg' : srcBasename
 
     // Check for duplicate (pHash match in the existing library index)
-    let status: ImportEntryStatus = 'ready'
+    let status: ImportEntryStatus = errorMessage ? 'error' : 'ready'
     let duplicateOf: string | undefined
 
     if (phashResult?.phash) {
@@ -215,7 +228,6 @@ export async function buildImportPlan(
     // Compute destination path and resolve collisions (only for non-duplicates)
     let destRelPath = getDestinationPath(exifResult.date, destFilename)
     let originalDestination: string | undefined
-    let errorMessage: string | undefined
 
     if (status === 'ready') {
       if (checkExists(join(libraryPath, destRelPath))) {
@@ -380,7 +392,7 @@ export async function executeImportPlan(
   onProgress: (progress: ImportProgress) => void,
   options: ExecutorOptions = {}
 ): Promise<ImportResult> {
-  const convertHeicFn = options.convertHeic ?? defaultHeicConverter
+  const convertHeicFn = options.convertHeic ?? createHeicConverter()
   const copyFileFn = options.copyFile ?? ((src, dest) => copyFileSync(src, dest))
   const moveFileFn = options.moveFile ?? ((src, dest) => renameSync(src, dest))
   const mkdirpFn = options.mkdirp ?? ((p) => mkdirSync(p, { recursive: true }))
@@ -431,9 +443,8 @@ export async function executeImportPlan(
       })
 
       try {
-        const srcExt = extname(entry.sourcePath).toLowerCase()
-        const isHeic = srcExt === '.heic' || srcExt === '.heif'
-        const doConvert = isHeic && config.heicConversion.enabled
+        const isHeic = isHeicFile(entry.sourcePath)
+        const doConvert = isHeic && config.heic.mode === 'convert'
 
         // Create destination folder in library if needed
         const destAbsPath = join(libraryPath, entry.destinationRelativePath)
@@ -449,7 +460,7 @@ export async function executeImportPlan(
 
           // Stage: copy/convert source → temp
           if (doConvert) {
-            await convertHeicFn(entry.sourcePath, tempPath, config.heicConversion.jpegQuality)
+            await convertHeicFn(entry.sourcePath, tempPath, config.heic.jpegQuality)
           } else {
             copyFileFn(entry.sourcePath, tempPath)
           }

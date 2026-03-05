@@ -1,10 +1,13 @@
-import { existsSync, unlinkSync } from 'fs'
-import { extname, join } from 'path'
-import { tmpdir } from 'os'
-import { randomUUID } from 'crypto'
-import { spawn } from 'child_process'
-import type { EventEmitter } from 'events'
-import { defaultPhashComputer, type PhashComputer, type PhashResult } from './phash'
+import { existsSync, readFileSync } from 'fs'
+import { extname } from 'path'
+import sharp from 'sharp'
+import { dctHash, defaultPhashComputer, type PhashComputer, type PhashResult } from './phash'
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const SAMPLE_SIZE = 32
 
 // ---------------------------------------------------------------------------
 // Pure helpers
@@ -21,6 +24,11 @@ import { defaultPhashComputer, type PhashComputer, type PhashResult } from './ph
 export function getHeicCandidatePaths(movPath: string): string[] {
   const stem = movPath.slice(0, -extname(movPath).length)
   return [stem + '.heic', stem + '.heif']
+}
+
+export function isHeicFile(filePath: string): boolean {
+  const ext = extname(filePath).toLowerCase()
+  return ext === '.heic' || ext === '.heif'
 }
 
 // ---------------------------------------------------------------------------
@@ -45,24 +53,27 @@ export function isLivePhotoMov(movPath: string, checkExists: ExistsChecker = exi
 }
 
 // ---------------------------------------------------------------------------
-// ffmpeg path resolution
+// HEIC full-image decode via heic-decode (WASM libheif)
 // ---------------------------------------------------------------------------
 
+/** Result of decoding a HEIC file to raw RGBA pixels. */
+export interface HeicDecodeResult {
+  data: Uint8Array
+  width: number
+  height: number
+}
+
+/** Injectable HEIC decoder function type. */
+export type HeicDecodeFn = (buffer: Buffer) => Promise<HeicDecodeResult>
+
 /**
- * Returns the absolute path to the ffmpeg binary from `ffmpeg-static`.
- *
- * In production (Electron packaged app), the binary lives in
- * `resources/app.asar.unpacked/...` rather than inside the asar archive.
- * This function rewrites the path accordingly.
+ * Default HEIC decoder using the heic-decode package (WASM libheif).
+ * Decodes the full tile-grid-assembled image at native resolution.
  */
-export function getFfmpegPath(
-  loadPath: () => string | null = (): string | null =>
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    require('ffmpeg-static') as string | null
-): string {
-  const path = loadPath()
-  if (!path) throw new Error('ffmpeg-static: no binary found for the current platform')
-  return path.replace('app.asar', 'app.asar.unpacked')
+export async function defaultHeicDecode(buffer: Buffer): Promise<HeicDecodeResult> {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const decode = require('heic-decode') as (opts: { buffer: Buffer }) => Promise<HeicDecodeResult>
+  return decode({ buffer })
 }
 
 // ---------------------------------------------------------------------------
@@ -73,55 +84,25 @@ export function getFfmpegPath(
 export type HeicConverter = (src: string, dest: string, quality: number) => Promise<void>
 
 /**
- * Injectable spawn function — used for testing without calling the real ffmpeg binary.
- * Must return an object that emits 'close' (exit code) and 'error' events.
+ * Creates a HeicConverter backed by heic-decode (WASM) + sharp.
+ *
+ * Decodes the full-resolution HEIC image via libheif, then encodes to JPEG
+ * via sharp at the specified quality level.
+ *
+ * @param decodeFn - Injectable HEIC decoder (defaults to defaultHeicDecode).
+ * @param readFile - Injectable file reader (defaults to readFileSync).
  */
-export type SpawnFn = (command: string, args: string[]) => EventEmitter
-
-/**
- * Creates a HeicConverter backed by ffmpeg (pre-built static binary).
- *
- * Uses `-q:v` to pass JPEG quality. ffmpeg exits non-zero on decode failure,
- * which causes the returned Promise to reject.
- *
- * Note: EXIF metadata from the original HEIC is not embedded in the output JPEG.
- * The import pipeline stores metadata (date, GPS, dimensions) in the SQLite
- * database separately via exifreader, so no information is lost.
- *
- * @param ffmpegPath - Absolute path to the ffmpeg binary (from getFfmpegPath()).
- * @param spawnFn    - Injectable spawn function (defaults to child_process.spawn).
- */
-export function createHeicConverter(ffmpegPath: string, spawnFn: SpawnFn = spawn): HeicConverter {
-  return (src: string, dest: string, quality: number): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const child = spawnFn(ffmpegPath, ['-i', src, '-q:v', String(quality), dest, '-y'])
-      child.on('close', (code: number | null) => {
-        if (code === 0) resolve()
-        else reject(new Error(`ffmpeg exited with code ${code ?? 'null'}`))
-      })
-      child.on('error', (err: Error) => reject(err))
-    })
+export function createHeicConverter(
+  decodeFn: HeicDecodeFn = defaultHeicDecode,
+  readFile: (path: string) => Buffer = readFileSync
+): HeicConverter {
+  return async (src: string, dest: string, quality: number): Promise<void> => {
+    const buffer = readFile(src)
+    const { data, width, height } = await decodeFn(buffer)
+    await sharp(Buffer.from(data), { raw: { width, height, channels: 4 } })
+      .jpeg({ quality })
+      .toFile(dest)
   }
-}
-
-/** Default converter using ffmpeg-static. */
-export const defaultHeicConverter: HeicConverter = createHeicConverter(getFfmpegPath())
-
-/**
- * Converts a HEIC/HEIF image to JPEG via ffmpeg.
- *
- * @param src       - Absolute path to the source HEIC/HEIF file.
- * @param dest      - Absolute path for the output JPEG file.
- * @param quality   - JPEG quality passed to ffmpeg `-q:v`.
- * @param converter - Injectable converter (defaults to defaultHeicConverter).
- */
-export async function convertHeicToJpeg(
-  src: string,
-  dest: string,
-  quality: number,
-  converter: HeicConverter = defaultHeicConverter
-): Promise<void> {
-  await converter(src, dest, quality)
 }
 
 // ---------------------------------------------------------------------------
@@ -129,68 +110,49 @@ export async function convertHeicToJpeg(
 // ---------------------------------------------------------------------------
 
 export interface UniversalPhashComputerOptions {
-  /** Injectable spawn function (for testing without real ffmpeg). */
-  spawnFn?: SpawnFn
-  /** Injectable pHash computer for the intermediate JPEG (defaults to defaultPhashComputer). */
+  /** Injectable HEIC decoder (for testing without real WASM). */
+  decodeFn?: HeicDecodeFn
+  /** Injectable file reader (defaults to readFileSync). */
+  readFile?: (path: string) => Buffer
+  /** Injectable pHash computer for non-HEIC files (defaults to defaultPhashComputer). */
   computeSharpPhash?: PhashComputer
-  /** Injectable temp path generator (defaults to os.tmpdir() + uuid). */
-  generateTempPath?: () => string
-  /** Injectable file deletion (defaults to unlinkSync, errors ignored). */
-  deleteFile?: (path: string) => void
 }
 
 /**
  * Creates a PhashComputer that handles both HEIC/HEIF and regular image files.
  *
- * - HEIC/HEIF: converts to a temporary JPEG via ffmpeg, computes pHash with
- *   native sharp, then deletes the temp file.
- * - All other formats: delegates directly to native sharp (no ffmpeg involved).
+ * - HEIC/HEIF: decodes full image via heic-decode (WASM libheif), pipes RGBA
+ *   pixels through sharp for resize + greyscale, then computes DCT hash.
+ *   This produces a correct full-image pHash (not just tile 0).
+ * - All other formats: delegates directly to native sharp.
  *
- * This replaces the old `createHeicPhashComputer` (WASM-based) and makes the
- * library indexer HEIC-aware: HEIC files now receive a real pHash in the DB.
- *
- * @param ffmpegPath - Absolute path to the ffmpeg binary (from getFfmpegPath()).
- * @param options    - Injectable dependencies (for testing).
+ * @param options - Injectable dependencies (for testing).
  */
 export function createUniversalPhashComputer(
-  ffmpegPath: string,
   options: UniversalPhashComputerOptions = {}
 ): PhashComputer {
-  const spawnFn = options.spawnFn ?? (spawn as SpawnFn)
+  const decodeFn = options.decodeFn ?? defaultHeicDecode
+  const readFile = options.readFile ?? readFileSync
   const computeSharpPhash = options.computeSharpPhash ?? defaultPhashComputer
-  const generateTempPath =
-    options.generateTempPath ?? ((): string => join(tmpdir(), `keepic-phash-${randomUUID()}.jpg`))
-  const deleteFile = options.deleteFile ?? ((p: string): void => unlinkSync(p))
 
   return async (filePath: string): Promise<PhashResult | null> => {
-    const ext = extname(filePath).toLowerCase()
-
-    if (ext !== '.heic' && ext !== '.heif') {
-      // Non-HEIC: native sharp path (fast)
+    if (!isHeicFile(filePath)) {
       return computeSharpPhash(filePath)
     }
 
-    // HEIC path: ffmpeg → temp JPEG → sharp pHash → delete temp
-    const tempPath = generateTempPath()
-    let result: PhashResult | null = null
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const child = spawnFn(ffmpegPath, ['-i', filePath, '-frames:v', '1', tempPath, '-y'])
-        child.on('close', (code: number | null) => {
-          if (code === 0) resolve()
-          else reject(new Error(`ffmpeg exited with code ${code ?? 'null'}`))
-        })
-        child.on('error', (err: Error) => reject(err))
-      })
-      result = await computeSharpPhash(tempPath)
-    } catch {
-      // result stays null
+    // HEIC path: heic-decode (full image) → sharp raw → greyscale → dctHash
+    const buffer = readFile(filePath)
+    const { data: rgba, width, height } = await decodeFn(buffer)
+    const { data } = await sharp(Buffer.from(rgba), { raw: { width, height, channels: 4 } })
+      .resize(SAMPLE_SIZE, SAMPLE_SIZE, { fit: 'fill' })
+      .greyscale()
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+
+    return {
+      phash: dctHash(new Uint8Array(data), SAMPLE_SIZE),
+      width,
+      height
     }
-    try {
-      deleteFile(tempPath)
-    } catch {
-      // Ignore cleanup errors
-    }
-    return result
   }
 }

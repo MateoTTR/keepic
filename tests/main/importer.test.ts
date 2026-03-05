@@ -76,12 +76,12 @@ const nullPhashComputer: PhashComputer = async () => null
 
 const baseConfig: AppConfig = {
   libraryPath: '/unused',
-  heicConversion: { enabled: false, jpegQuality: 90 }
+  heic: { mode: 'keep', jpegQuality: 90 }
 }
 
-const heicConversionConfig: AppConfig = {
+const heicConvertConfig: AppConfig = {
   ...baseConfig,
-  heicConversion: { enabled: true, jpegQuality: 90 }
+  heic: { mode: 'convert', jpegQuality: 90 }
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +304,7 @@ describe('buildImportPlan', () => {
   it('renames HEIC destination to .jpg when conversion is enabled', async () => {
     touch(join(sourceDir, 'IMG_1234.HEIC'))
 
-    const plan = await buildImportPlan(sourceDir, libraryDir, db, heicConversionConfig, () => {}, {
+    const plan = await buildImportPlan(sourceDir, libraryDir, db, heicConvertConfig, () => {}, {
       loadExif: nullExifLoader,
       computePhash: nullPhashComputer,
       convertHeic: async () => {},
@@ -327,7 +327,7 @@ describe('buildImportPlan', () => {
       writeFileSync(dest, 'fake-jpeg')
     }
 
-    const plan = await buildImportPlan(sourceDir, libraryDir, db, heicConversionConfig, () => {}, {
+    const plan = await buildImportPlan(sourceDir, libraryDir, db, heicConvertConfig, () => {}, {
       loadExif: nullExifLoader,
       convertHeic: mockConvert,
       computePhash: async (fp) => {
@@ -350,15 +350,15 @@ describe('buildImportPlan', () => {
     rmSync(stagingDir, { recursive: true, force: true })
   })
 
-  it('sets pHash to null and stagedPath to undefined when convertHeic fails', async () => {
+  it('sets status to error with message when convertHeic fails', async () => {
     touch(join(sourceDir, 'IMG.heic'))
 
     let regularPhashCalled = false
 
-    const plan = await buildImportPlan(sourceDir, libraryDir, db, heicConversionConfig, () => {}, {
+    const plan = await buildImportPlan(sourceDir, libraryDir, db, heicConvertConfig, () => {}, {
       loadExif: nullExifLoader,
       convertHeic: async () => {
-        throw new Error('ffmpeg failed')
+        throw new Error('decode failed')
       },
       computePhash: async () => {
         regularPhashCalled = true
@@ -368,10 +368,10 @@ describe('buildImportPlan', () => {
       mkdirp: () => {}
     })
 
-    // Fallback: no stagedPath, pHash is null (staging failed)
     expect(plan.entries[0].stagedPath).toBeUndefined()
     expect(plan.entries[0].phash).toBeNull()
-    expect(plan.entries[0].status).toBe('ready')
+    expect(plan.entries[0].status).toBe('error')
+    expect(plan.entries[0].errorMessage).toContain('decode failed')
     // computePhash is NOT called when staging fails (no staged file to compute from)
     expect(regularPhashCalled).toBe(false)
   })
@@ -385,6 +385,50 @@ describe('buildImportPlan', () => {
     })
 
     expect(plan.entries[0].destinationRelativePath).toMatch(/IMG_1234\.HEIC$/)
+  })
+
+  it('sets status to error when pHash computation fails on a non-HEIC file', async () => {
+    touch(join(sourceDir, 'broken.jpg'))
+
+    const plan = await buildImportPlan(sourceDir, libraryDir, db, baseConfig, () => {}, {
+      loadExif: nullExifLoader,
+      computePhash: async () => {
+        throw new Error('sharp decode error')
+      }
+    })
+
+    expect(plan.entries[0].status).toBe('error')
+    expect(plan.entries[0].errorMessage).toContain('sharp decode error')
+    expect(plan.entries[0].phash).toBeNull()
+  })
+
+  it('handles non-Error throws in pHash and conversion error paths', async () => {
+    // Non-HEIC path: non-Error throw
+    touch(join(sourceDir, 'fail.jpg'))
+    const plan1 = await buildImportPlan(sourceDir, libraryDir, db, baseConfig, () => {}, {
+      loadExif: nullExifLoader,
+      // eslint-disable-next-line no-throw-literal
+      computePhash: async () => {
+        throw 'string phash error'
+      }
+    })
+    expect(plan1.entries[0].errorMessage).toContain('string phash error')
+
+    // HEIC conversion path: non-Error throw
+    rmSync(sourceDir, { recursive: true, force: true })
+    sourceDir = makeTempDir()
+    touch(join(sourceDir, 'fail.heic'))
+    const plan2 = await buildImportPlan(sourceDir, libraryDir, db, heicConvertConfig, () => {}, {
+      loadExif: nullExifLoader,
+      // eslint-disable-next-line no-throw-literal
+      convertHeic: async () => {
+        throw 42
+      },
+      computePhash: nullPhashComputer,
+      stagingDir: join(sourceDir, 'staging'),
+      mkdirp: () => {}
+    })
+    expect(plan2.entries[0].errorMessage).toContain('42')
   })
 
   it('counts Live Photo MOVs in livePhotosDiscarded', async () => {
@@ -580,7 +624,7 @@ describe('executeImportPlan', () => {
       })
     ])
 
-    await executeImportPlan(plan, libraryDir, tempDir, db, heicConversionConfig, noop, {
+    await executeImportPlan(plan, libraryDir, tempDir, db, heicConvertConfig, noop, {
       convertHeic: async () => {
         convertCalled = true
       },
@@ -602,7 +646,7 @@ describe('executeImportPlan', () => {
 
     const plan = makePlan([readyEntry({ sourcePath: '/source/photo.jpg' })])
 
-    await executeImportPlan(plan, libraryDir, tempDir, db, heicConversionConfig, noop, {
+    await executeImportPlan(plan, libraryDir, tempDir, db, heicConvertConfig, noop, {
       convertHeic: async () => {
         throw new Error('should not convert JPG')
       },
@@ -890,7 +934,7 @@ describe('executeImportPlan', () => {
       })
     ])
 
-    await executeImportPlan(plan, libraryDir, tempDir, db, heicConversionConfig, noop, {
+    await executeImportPlan(plan, libraryDir, tempDir, db, heicConvertConfig, noop, {
       convertHeic: async () => {
         convertCalled = true
       },
@@ -931,7 +975,7 @@ describe('executeImportPlan', () => {
       })
     ])
 
-    await executeImportPlan(plan, libraryDir, tempDir, db, heicConversionConfig, noop, {
+    await executeImportPlan(plan, libraryDir, tempDir, db, heicConvertConfig, noop, {
       moveFile: noop,
       mkdirp: noop,
       statFile: mockStat,
@@ -957,25 +1001,17 @@ describe('executeImportPlan', () => {
       })
     ])
 
-    const result = await executeImportPlan(
-      plan,
-      libraryDir,
-      tempDir,
-      db,
-      heicConversionConfig,
-      noop,
-      {
-        moveFile: () => {
-          throw new Error('move failed')
-        },
-        mkdirp: noop,
-        statFile: mockStat,
-        rmTempDir: noop,
-        rmStagedFile: (p) => {
-          deletedFiles.push(p)
-        }
+    const result = await executeImportPlan(plan, libraryDir, tempDir, db, heicConvertConfig, noop, {
+      moveFile: () => {
+        throw new Error('move failed')
+      },
+      mkdirp: noop,
+      statFile: mockStat,
+      rmTempDir: noop,
+      rmStagedFile: (p) => {
+        deletedFiles.push(p)
       }
-    )
+    })
 
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0].error).toBe('move failed')
@@ -1003,27 +1039,19 @@ describe('executeImportPlan', () => {
       })
     ])
 
-    const result = await executeImportPlan(
-      plan,
-      libraryDir,
-      tempDir,
-      db,
-      heicConversionConfig,
-      noop,
-      {
-        moveFile: noop,
-        mkdirp: noop,
-        statFile: mockStat,
-        rmTempDir: noop,
-        rmStagedFile: (p) => {
-          deletedFiles.push(p)
-        },
-        isCancelled: () => {
-          cancelAfter++
-          return cancelAfter > 1 // cancel before second file
-        }
+    const result = await executeImportPlan(plan, libraryDir, tempDir, db, heicConvertConfig, noop, {
+      moveFile: noop,
+      mkdirp: noop,
+      statFile: mockStat,
+      rmTempDir: noop,
+      rmStagedFile: (p) => {
+        deletedFiles.push(p)
+      },
+      isCancelled: () => {
+        cancelAfter++
+        return cancelAfter > 1 // cancel before second file
       }
-    )
+    })
 
     expect(result.status).toBe('cancelled')
     // Both staged files must be cleaned up (even the one not processed)
@@ -1063,7 +1091,7 @@ describe('executeImportPlan', () => {
 
     // rmStagedFile throws — should be silently ignored, plan still completes
     await expect(
-      executeImportPlan(plan, libraryDir, tempDir, db, heicConversionConfig, noop, {
+      executeImportPlan(plan, libraryDir, tempDir, db, heicConvertConfig, noop, {
         moveFile: noop,
         mkdirp: noop,
         statFile: mockStat,
@@ -1088,7 +1116,7 @@ describe('executeImportPlan', () => {
     ])
 
     // rmStagedFile NOT injected → default uses rmSync(p, { force: true })
-    await executeImportPlan(plan, libraryDir, tempDir, db, heicConversionConfig, noop, {
+    await executeImportPlan(plan, libraryDir, tempDir, db, heicConvertConfig, noop, {
       moveFile: noop,
       mkdirp: noop,
       statFile: mockStat,

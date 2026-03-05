@@ -110,7 +110,7 @@
 |---|---|---|---|---|
 | [TASK-037](TASK-037-fix-heic-double-decode.md) | Fix slow HEIC processing — replace WASM decoder with native ffmpeg | P0 | `[x]` | 2026-03-01-session-031 |
 | [TASK-038](TASK-038-fix-picker-list-url.md) | Fix Picker API list URL — sessionId must be a query param, not a path segment | P1 | `[x]` | 2026-03-01-session-030 |
-| [TASK-039](TASK-039-fix-heic-ffmpeg-windows.md) | Fix HEIC ffmpeg crash on Windows + add HEIC conversion error reporting | P0 | `[ ]` | — |
+| [TASK-039](TASK-039-fix-heic-ffmpeg-windows.md) | Fix HEIC handling: replace ffmpeg with heic-decode, error reporting, default keep | P0 | `[x]` | 2026-03-05-session-033 |
 
 ### CI fixes (committed directly to `develop`)
 
@@ -131,8 +131,8 @@
 
 ## Phase 9 — Performance (v0.3.x)
 
-> **Dependency**: PERF-001 must be implemented after TASK-037 (ffmpeg-based HEIC).
-> ffmpeg child processes enable true OS-level parallelism; WASM would not benefit.
+> **Dependency**: PERF-001 must be implemented after TASK-039 (heic-decode-based HEIC).
+> heic-decode (WASM) + sharp (native) both release the V8 lock, enabling true parallelism via `Promise.all`.
 
 | ID | Title | Priority | Status | Session |
 |---|---|---|---|---|
@@ -145,4 +145,5 @@
 | ID | Title | Type | Priority |
 |---|---|---|---|
 | [REFACTOR-001](REFACTOR-001-heic-phash-simplification.md) | Simplify HEIC pHash workflow — superseded by TASK-037 | Refactor | `[x]` |
+| TASK-040 | Native C addon (libheif) for faster HEIC decode — optional optimization | Performance | P4 |
 | FEAT-001 | Side-by-side duplicate comparison viewer with metadata and "Reveal in Explorer/Finder" | Feature | P4 |

@@ -158,17 +158,29 @@ Photos are organized by date of capture using the following priority chain:
 | 4 | File modification date | Unreliable but usable |
 | 5 | Import date | Last resort — user is warned |
 
-### 2.7 iPhone Live Photos
+### 2.7 iPhone Live Photos and HEIC Handling
 
 An iPhone Live Photo consists of: `IMG_1234.HEIC` (still) + `IMG_1234.MOV` (video clip).
 
 **Default behavior**:
-- `.HEIC` is imported and archived in the monthly folder
+- `.HEIC` is imported and archived in the monthly folder **as-is** (no conversion)
 - `.MOV` is discarded (not imported); count shown in import summary
 
-**HEIC conversion (optional, configured in settings)**:
-- HEIC → JPEG conversion in temp folder; only the JPEG is moved to the library
-- EXIF metadata is copied to the JPEG; original HEIC is discarded after successful conversion
+**HEIC mode** (configured in settings as `heic.mode`):
+
+| Mode | Behaviour | Default |
+|---|---|---|
+| `'keep'` | Copy the original HEIC file into the library unchanged | **Yes** |
+| `'convert'` | Convert to JPEG at full native resolution before storing | No |
+
+**pHash computation**: regardless of mode, HEIC files are decoded in full resolution using
+`heic-decode` (WebAssembly) to compute an accurate perceptual hash. This ensures cross-format
+deduplication (HEIC vs JPEG) works correctly.
+
+**HEIC conversion** (`mode = 'convert'`):
+- HEIC → JPEG conversion via heic-decode + sharp in the staging folder
+- Only the JPEG is moved to the library
+- Full native resolution preserved (e.g. 3024x4032 for iPhone 12MP)
 
 ### 2.8 Event Folders (V1 — Manual)
 
@@ -237,7 +249,7 @@ Contents:
 | Format | Support |
 |---|---|
 | JPEG / JPG | Full |
-| HEIC / HEIF | Full (with optional JPEG conversion) |
+| HEIC / HEIF | Full (kept as-is by default; optional JPEG conversion via heic-decode + sharp) |
 | PNG | Full |
 | TIFF | Full |
 | RAW (CR2, NEF, ARW) | EXIF + pHash only; archived as-is |
@@ -263,7 +275,7 @@ Contents:
 
 | # | Question | Owner | Status |
 |---|---|---|---|
-| Q1 | HEIC conversion: user-configurable JPEG quality, or fixed (e.g. 90%)? | User | Open |
+| Q1 | HEIC conversion: user-configurable JPEG quality, or fixed? | — | **Closed** — configurable via `heic.jpegQuality` (default 90) |
 | Q2 | Duplicates during import: review one by one, or batch review at end? | User | Open |
 | Q3 | HEIC on Windows without conversion: show one-time warning + codec link? | User | Open |
 | Q4 | Google Photos date filter: **Closed** — app pre-fills with last imported date; user can adjust | — | Closed |
