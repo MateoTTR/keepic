@@ -1,4 +1,4 @@
-import { writeFileSync, mkdirSync } from 'fs'
+import { writeFileSync, mkdirSync, renameSync } from 'fs'
 import { join, extname, basename } from 'path'
 import type {
   GoogleDownloadProgress,
@@ -38,6 +38,7 @@ export interface DownloaderDeps {
   fetch?: (url: string, init?: RequestInit) => Promise<Response>
   writeFile?: (path: string, data: Buffer) => void
   mkdirp?: (path: string) => void
+  renameFile?: (oldPath: string, newPath: string) => void
   isCancelled?: () => boolean
   listMediaItems?: ListMediaItemsFn
 }
@@ -66,15 +67,38 @@ export function resolveFilenameCollision(filename: string, usedFilenames: Set<st
 }
 
 /**
+ * Returns true if the buffer starts with JPEG magic bytes (FF D8 FF).
+ */
+export function isJpegBuffer(data: Buffer): boolean {
+  return data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff
+}
+
+/**
+ * If the filename has a HEIC/HEIF extension but the content is actually JPEG
+ * (detected via magic bytes), returns the filename with .jpg extension.
+ * Otherwise returns the filename unchanged.
+ *
+ * This handles the Google Picker API serving JPEG content with .HEIC filenames.
+ */
+export function fixHeicJpegExtension(filename: string, data: Buffer): string {
+  const ext = extname(filename).toLowerCase()
+  if ((ext === '.heic' || ext === '.heif') && isJpegBuffer(data)) {
+    return filename.slice(0, -ext.length) + '.jpg'
+  }
+  return filename
+}
+
+/**
  * Downloads the original file for one media item to destPath.
  * Appends '=d' to the baseUrl to request the original quality file.
+ * Returns the downloaded buffer for post-processing (e.g. magic bytes check).
  */
 export async function downloadMediaItem(
   item: PickerMediaItem,
   accessToken: string,
   destPath: string,
   deps?: Pick<DownloaderDeps, 'fetch' | 'writeFile'>
-): Promise<void> {
+): Promise<Buffer> {
   /* v8 ignore next */
   const fetchFn = deps?.fetch ?? globalThis.fetch
   /* v8 ignore next */
@@ -90,6 +114,7 @@ export async function downloadMediaItem(
 
   const buffer = Buffer.from(await response.arrayBuffer())
   writeFileFn(destPath, buffer)
+  return buffer
 }
 
 /**
@@ -158,6 +183,8 @@ export async function downloadPickerPhotos(
   const writeFileFn = deps?.writeFile ?? ((p: string, d: Buffer) => writeFileSync(p, d))
   /* v8 ignore next */
   const mkdirpFn = deps?.mkdirp ?? ((p: string) => mkdirSync(p, { recursive: true }))
+  /* v8 ignore next */
+  const renameFileFn = deps?.renameFile ?? ((o: string, n: string) => renameSync(o, n))
   /* v8 ignore next */
   const isCancelled = deps?.isCancelled ?? (() => false)
   /* v8 ignore next */
@@ -257,7 +284,18 @@ export async function downloadPickerPhotos(
     onProgress({ total, downloaded, currentFile: item.filename })
 
     try {
-      await downloadMediaItem(item, accessToken, destPath, downloadDeps)
+      const buffer = await downloadMediaItem(item, accessToken, destPath, downloadDeps)
+
+      // Fix HEIC extension if Google served JPEG content with .HEIC filename
+      const correctedFilename = fixHeicJpegExtension(filename, buffer)
+      if (correctedFilename !== filename) {
+        const finalFilename = resolveFilenameCollision(correctedFilename, usedFilenames)
+        const correctedPath = join(downloadDir, finalFilename)
+        renameFileFn(destPath, correctedPath)
+        usedFilenames.delete(filename)
+        usedFilenames.add(finalFilename)
+      }
+
       downloaded++
     } catch (err) {
       /* v8 ignore next 4 */

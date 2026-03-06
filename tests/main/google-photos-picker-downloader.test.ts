@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   resolveFilenameCollision,
+  isJpegBuffer,
+  fixHeicJpegExtension,
   downloadMediaItem,
   refreshAccessToken,
   downloadPickerPhotos,
@@ -65,11 +67,77 @@ describe('resolveFilenameCollision', () => {
 })
 
 // ---------------------------------------------------------------------------
+// isJpegBuffer
+// ---------------------------------------------------------------------------
+
+describe('isJpegBuffer', () => {
+  it('returns true for JPEG magic bytes FF D8 FF', () => {
+    expect(isJpegBuffer(Buffer.from([0xff, 0xd8, 0xff, 0xe0]))).toBe(true)
+  })
+
+  it('returns true for JPEG with different APP marker (FF D8 FF E1)', () => {
+    expect(isJpegBuffer(Buffer.from([0xff, 0xd8, 0xff, 0xe1]))).toBe(true)
+  })
+
+  it('returns false for HEIC magic bytes', () => {
+    // HEIC files start with ftypheic at offset 4
+    const heicHeader = Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70])
+    expect(isJpegBuffer(heicHeader)).toBe(false)
+  })
+
+  it('returns false for PNG magic bytes', () => {
+    expect(isJpegBuffer(Buffer.from([0x89, 0x50, 0x4e, 0x47]))).toBe(false)
+  })
+
+  it('returns false for buffer shorter than 3 bytes', () => {
+    expect(isJpegBuffer(Buffer.from([0xff, 0xd8]))).toBe(false)
+    expect(isJpegBuffer(Buffer.from([]))).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// fixHeicJpegExtension
+// ---------------------------------------------------------------------------
+
+describe('fixHeicJpegExtension', () => {
+  const jpegData = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00])
+  const heicData = Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66])
+
+  it('renames .HEIC to .jpg when content is JPEG', () => {
+    expect(fixHeicJpegExtension('IMG_1234.HEIC', jpegData)).toBe('IMG_1234.jpg')
+  })
+
+  it('renames .heic to .jpg when content is JPEG', () => {
+    expect(fixHeicJpegExtension('photo.heic', jpegData)).toBe('photo.jpg')
+  })
+
+  it('renames .HEIF to .jpg when content is JPEG', () => {
+    expect(fixHeicJpegExtension('IMG.HEIF', jpegData)).toBe('IMG.jpg')
+  })
+
+  it('renames .heif to .jpg when content is JPEG', () => {
+    expect(fixHeicJpegExtension('IMG.heif', jpegData)).toBe('IMG.jpg')
+  })
+
+  it('does not rename .HEIC when content is actually HEIC', () => {
+    expect(fixHeicJpegExtension('IMG_1234.HEIC', heicData)).toBe('IMG_1234.HEIC')
+  })
+
+  it('does not rename .jpg files', () => {
+    expect(fixHeicJpegExtension('photo.jpg', jpegData)).toBe('photo.jpg')
+  })
+
+  it('does not rename .png files even if buffer starts with JPEG bytes', () => {
+    expect(fixHeicJpegExtension('photo.png', jpegData)).toBe('photo.png')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // downloadMediaItem
 // ---------------------------------------------------------------------------
 
 describe('downloadMediaItem', () => {
-  it('fetches baseUrl + =d and writes the response buffer', async () => {
+  it('fetches baseUrl + =d, writes the response buffer, and returns it', async () => {
     const fileData = Buffer.from('fake-image-bytes')
     let capturedPath: string | undefined
     let capturedData: Buffer | undefined
@@ -84,13 +152,14 @@ describe('downloadMediaItem', () => {
       capturedData = d
     })
 
-    await downloadMediaItem(makeItem(), 'my-token', '/tmp/IMG_001.JPG', {
+    const result = await downloadMediaItem(makeItem(), 'my-token', '/tmp/IMG_001.JPG', {
       fetch: mockFetch,
       writeFile: mockWrite
     })
 
     expect(capturedPath).toBe('/tmp/IMG_001.JPG')
     expect(capturedData).toEqual(fileData)
+    expect(result).toEqual(fileData)
   })
 
   it('sends Authorization header', async () => {
@@ -545,6 +614,98 @@ describe('downloadPickerPhotos', () => {
     expect(result.status).toBe('completed')
     expect(result.downloaded).toBe(0)
     expect(result.errors).toHaveLength(0)
+  })
+
+  it('renames .HEIC to .jpg when downloaded content is JPEG (Google Picker API)', async () => {
+    // Google Picker API serves JPEG content but preserves the .HEIC filename
+    const jpegData = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46])
+    const items = [makeItem({ filename: 'IMG_1234.HEIC' })]
+    const listFn = makeListMediaItems([{ items }])
+    const mockFetch = makeDownloadFetch(jpegData)
+    const renamedPaths: [string, string][] = []
+
+    const result = await downloadPickerPhotos('session-1', TOKENS, '/dl', vi.fn(), {
+      fetch: mockFetch,
+      writeFile: mockWriteFile,
+      mkdirp: mockMkdirp,
+      renameFile: (oldP, newP) => renamedPaths.push([oldP, newP]),
+      listMediaItems: listFn
+    })
+
+    expect(result.status).toBe('completed')
+    expect(result.downloaded).toBe(1)
+    // File was written with original .HEIC name then renamed to .jpg
+    expect(mockWriteFile).toHaveBeenCalledWith('/dl/IMG_1234.HEIC', expect.any(Buffer))
+    expect(renamedPaths).toHaveLength(1)
+    expect(renamedPaths[0]).toEqual(['/dl/IMG_1234.HEIC', '/dl/IMG_1234.jpg'])
+  })
+
+  it('does not rename when .HEIC file contains real HEIC data', async () => {
+    // Real HEIC data starts with ftyp box
+    const heicData = Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70])
+    const items = [makeItem({ filename: 'IMG_5678.HEIC' })]
+    const listFn = makeListMediaItems([{ items }])
+    const mockFetch = makeDownloadFetch(heicData)
+    const mockRename = vi.fn()
+
+    const result = await downloadPickerPhotos('session-1', TOKENS, '/dl', vi.fn(), {
+      fetch: mockFetch,
+      writeFile: mockWriteFile,
+      mkdirp: mockMkdirp,
+      renameFile: mockRename,
+      listMediaItems: listFn
+    })
+
+    expect(result.status).toBe('completed')
+    expect(result.downloaded).toBe(1)
+    expect(mockRename).not.toHaveBeenCalled()
+  })
+
+  it('does not rename .jpg files even with JPEG content', async () => {
+    const jpegData = Buffer.from([0xff, 0xd8, 0xff, 0xe0])
+    const items = [makeItem({ filename: 'photo.jpg' })]
+    const listFn = makeListMediaItems([{ items }])
+    const mockFetch = makeDownloadFetch(jpegData)
+    const mockRename = vi.fn()
+
+    await downloadPickerPhotos('session-1', TOKENS, '/dl', vi.fn(), {
+      fetch: mockFetch,
+      writeFile: mockWriteFile,
+      mkdirp: mockMkdirp,
+      renameFile: mockRename,
+      listMediaItems: listFn
+    })
+
+    expect(mockRename).not.toHaveBeenCalled()
+  })
+
+  it('handles filename collision correctly after HEIC→JPEG rename', async () => {
+    const jpegData = Buffer.from([0xff, 0xd8, 0xff, 0xe0])
+    // Two HEIC files that will both become .jpg — potential collision
+    const items = [
+      makeItem({ filename: 'IMG.HEIC' }),
+      makeItem({ id: 'i2', filename: 'IMG.HEIC' })
+    ]
+    const listFn = makeListMediaItems([{ items }])
+    const mockFetch = makeDownloadFetch(jpegData)
+    const renamedPaths: [string, string][] = []
+    const writtenPaths: string[] = []
+
+    await downloadPickerPhotos('session-1', TOKENS, '/dl', vi.fn(), {
+      fetch: mockFetch,
+      writeFile: vi.fn((p) => writtenPaths.push(p)),
+      mkdirp: mockMkdirp,
+      renameFile: (oldP, newP) => renamedPaths.push([oldP, newP]),
+      listMediaItems: listFn
+    })
+
+    // First file: IMG.HEIC written, renamed to IMG.jpg
+    //   usedFilenames after: {IMG.jpg}
+    // Second file: IMG.HEIC (no HEIC collision since IMG.HEIC was removed)
+    //   written as IMG.HEIC, corrected to IMG.jpg → collision → IMG_1.jpg
+    expect(renamedPaths).toHaveLength(2)
+    expect(renamedPaths[0]).toEqual(['/dl/IMG.HEIC', '/dl/IMG.jpg'])
+    expect(renamedPaths[1]).toEqual(['/dl/IMG.HEIC', '/dl/IMG_1.jpg'])
   })
 
   it('includes updatedAccessToken in failed result when refresh occurred before failure', async () => {
