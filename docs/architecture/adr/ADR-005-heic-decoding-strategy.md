@@ -107,8 +107,10 @@ Decodes HEIC to raw RGBA pixels, then use `sharp` for resize/conversion.
    plagued the ffmpeg approach (Linux binary in Windows installer).
 
 3. **Acceptable performance**: at ~393ms/file (v2.x), indexing 8000 HEIC photos takes ~53 minutes
-   sequentially. With PERF-001 concurrent processing (8 cores), this drops to ~7 minutes.
-   This is acceptable for a batch operation that runs infrequently.
+   sequentially. **Note**: PERF-001's `withConcurrency` runs async workers in a single thread;
+   since WASM blocks the V8 event loop, HEIC decodes are effectively sequential. True
+   parallelism requires spawning N Worker threads (see PERF-002 in backlog).
+   The sequential time is acceptable for a batch operation that runs infrequently.
 
 4. **Validated compatibility**: testing on 20 real iPhone HEIC files confirmed that heic-decode's
    RGBA-to-grayscale path produces pHash values within 1 bit of the JPEG-to-grayscale path.
@@ -129,8 +131,9 @@ Decodes HEIC to raw RGBA pixels, then use `sharp` for resize/conversion.
 
 ### Negative / Trade-offs
 - ~393ms per HEIC file is slower than native (~40ms for ffmpeg, ~50-100ms for C addon)
-- For very large HEIC collections (10,000+), sequential indexing may take over an hour
-  (mitigated by PERF-001 concurrent processing)
+- For very large HEIC collections (10,000+), sequential indexing may take over an hour.
+  PERF-001's async concurrency does not help for WASM (blocks V8 event loop).
+  True parallelism via N Worker threads (PERF-002) would reduce this proportionally to core count.
 
 ### Neutral
 - All existing HEIC pHash values in the database from v0.2.1 (tile 0 based) are invalidated.

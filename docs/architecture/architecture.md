@@ -190,7 +190,8 @@ App polls session status every 3s (timeout 5min)
   Once confirmed → list all selected media items
         │
         ▼
-Download selected items to temp/ (original quality, baseUrl=d)
+Download selected items to temp/ (baseUrl=d, best available quality)
+  → HEIC files are served as JPEG by Google — detect via magic bytes, rename to .jpg
   → Auto-refresh access token during long downloads
   → Individual errors recorded, do not abort batch
         │
