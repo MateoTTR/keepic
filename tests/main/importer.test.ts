@@ -462,8 +462,8 @@ describe('buildImportPlan', () => {
       }
     )
 
-    // Called twice per file (before and after processing), so 4 calls for 2 files
-    expect(progressCalls).toEqual([0, 1, 1, 2])
+    // Initial (0) + 2 Phase 1 events (1, 2) + 4 Phase 2 events (0, 1, 1, 2) = 7
+    expect(progressCalls).toEqual([0, 1, 2, 0, 1, 1, 2])
   })
 
   it('populates width and height from pHash result', async () => {
@@ -835,7 +835,8 @@ describe('executeImportPlan', () => {
       { copyFile: noop, moveFile: noop, mkdirp: noop, statFile: mockStat, rmTempDir: noop }
     )
 
-    expect(progressEvents).toEqual([0, 1, 1, 2])
+    // Initial (0) + 2 Phase 1 events (1, 2) + 4 Phase 2 events (0, 1, 1, 2) = 7
+    expect(progressEvents).toEqual([0, 1, 2, 0, 1, 1, 2])
   })
 
   it('propagates livePhotosDiscarded from the plan', async () => {
