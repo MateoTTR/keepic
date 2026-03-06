@@ -179,7 +179,11 @@ export async function buildImportPlan(
   const { candidates, livePhotoMovs } = scanSourceFiles(sourceFolder)
   const total = candidates.length
 
+  // Initial progress: signal scan complete, Phase 1 starting
+  onProgress({ total, processed: 0, currentFile: null })
+
   // Phase 1: parallel — stat, pHash, EXIF, HEIC staging
+  let phase1Processed = 0
   const phase1Results = await withConcurrency(
     candidates,
     concurrency,
@@ -224,6 +228,9 @@ export async function buildImportPlan(
       const destFilename = convertHeic
         ? srcBasename.slice(0, -srcExt2.length) + '.jpg'
         : srcBasename
+
+      phase1Processed++
+      onProgress({ total, processed: phase1Processed, currentFile: srcPath })
 
       return {
         srcPath,
@@ -478,8 +485,20 @@ export async function executeImportPlan(
   let imported = 0
   let status: ImportStatus = 'completed'
 
+  // Initial progress: signal Phase 1 starting
+  onProgress({
+    total,
+    processed: 0,
+    imported: 0,
+    skipped: duplicateCount,
+    duplicates: duplicateCount,
+    livePhotosDiscarded: plan.livePhotosDiscarded,
+    currentFile: null
+  })
+
   // Phase 1: parallel — copy/convert/move files to library
   // Each worker checks isCancelled() before processing its entry
+  let phase1Processed = 0
   const phase1Results = await withConcurrency(
       entriesToProcess,
       concurrency,
@@ -512,8 +531,28 @@ export async function executeImportPlan(
           }
 
           const fileStat = statFileFn(destAbsPath)
+          phase1Processed++
+          onProgress({
+            total,
+            processed: phase1Processed,
+            imported: 0,
+            skipped: duplicateCount,
+            duplicates: duplicateCount,
+            livePhotosDiscarded: plan.livePhotosDiscarded,
+            currentFile: entry.sourcePath
+          })
           return { entry, fileStat }
         } catch (err) {
+          phase1Processed++
+          onProgress({
+            total,
+            processed: phase1Processed,
+            imported: 0,
+            skipped: duplicateCount,
+            duplicates: duplicateCount,
+            livePhotosDiscarded: plan.livePhotosDiscarded,
+            currentFile: entry.sourcePath
+          })
           return {
             entry,
             error: err instanceof Error ? err.message : String(err)

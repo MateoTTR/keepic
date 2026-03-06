@@ -344,12 +344,23 @@ describe('runIndexer', () => {
 
   it('reports progress via the onProgress callback', async () => {
     buildLibrary(libraryRoot, { '2025/2025.01': ['a.jpg', 'b.jpg', 'c.jpg'] })
-    const progressEvents: { processed: number; total: number }[] = []
+    const progressEvents: { processed: number; total: number; indexed: number }[] = []
     await runIndexer(libraryRoot, db, (p) => progressEvents.push(p), opts)
-    expect(progressEvents).toHaveLength(3)
-    expect(progressEvents[0].processed).toBe(1)
-    expect(progressEvents[0].total).toBe(3)
-    expect(progressEvents[2].processed).toBe(3)
+
+    // Initial event (processed=0) + 3 Phase 1 events + 3 Phase 2 events = 7
+    expect(progressEvents).toHaveLength(7)
+
+    // Initial progress
+    expect(progressEvents[0]).toMatchObject({ total: 3, processed: 0, indexed: 0 })
+
+    // Phase 1 progress: processed increments, indexed stays 0
+    expect(progressEvents[1]).toMatchObject({ total: 3, processed: 1, indexed: 0 })
+    expect(progressEvents[3]).toMatchObject({ total: 3, processed: 3, indexed: 0 })
+
+    // Phase 2 progress: processed stays at 3, indexed increments
+    const phase2Events = progressEvents.slice(4)
+    expect(phase2Events[phase2Events.length - 1].processed).toBe(3)
+    expect(phase2Events[phase2Events.length - 1].indexed).toBe(3)
   })
 
   it('sets source to "local" for indexer-discovered photos', async () => {
