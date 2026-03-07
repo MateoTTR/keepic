@@ -117,7 +117,8 @@ cmake -S "$HEIF_SRC" -B "$HEIF_BUILD" \
   -DCMAKE_PREFIX_PATH="$DEPS_DIR" \
   -DCMAKE_INSTALL_PREFIX="$DEPS_DIR"
 
-cmake --build "$HEIF_BUILD" --config Release --parallel
+# Limit parallelism for libheif — unlimited --parallel can OOM on CI runners (2 vCPU / 7 GB)
+cmake --build "$HEIF_BUILD" --config Release --parallel 2
 cmake --install "$HEIF_BUILD" --config Release
 
 echo "Static libraries built in $DEPS_DIR/"
