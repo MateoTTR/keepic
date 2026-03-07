@@ -246,6 +246,18 @@
 
 ---
 
+## Phase 17 — v0.3.x Release Fixes & Improvements
+
+> Bugs and improvements found during manual testing of v0.3.1/v0.3.2 (2026-03-07).
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| [TASK-051-fix](TASK-051-fix-libheif-upgrade.md) | Upgrade libheif 1.17.6 → 1.21.2 — fix "Too many auxiliary image references" on Apple HDR HEIC files | P1 | `[x]` | 2026-03-08-session-048 |
+| TASK-052-fix | Fix EPERM on picker-staging cleanup (Windows file lock on `unlink`) | P2 | `[ ]` | — |
+| TASK-053-feat | Differentiate photos vs videos in stats and reports (library stats, import history, scan/analysis/import reports) | P3 | `[ ]` | — |
+
+---
+
 ## Upcoming / Not Yet Planned
 
 - In-app browse/viewer (deferred)
