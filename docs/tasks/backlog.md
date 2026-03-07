@@ -158,7 +158,7 @@
 |---|---|---|---|---|
 | POC-001 | HEIC decoding benchmark PoC — compare WASM vs native strategies (libheif addon, sharp rebuild, etc.) | P1 | `[ ]` | — |
 | PERF-002 | True HEIC parallel decoding — approach TBD based on POC-001 results | P2 | `[ ]` | — |
-| PERF-003 | Concurrent Google Picker downloads — apply withConcurrency to HTTP fetches (I/O-bound) | P3 | `[ ]` | — |
+| PERF-003 | Concurrent Google Picker downloads — apply withConcurrency to HTTP fetches (I/O-bound) | P3 | `[x]` | 2026-03-07-session-040 |
 
 ---
 
@@ -166,7 +166,7 @@
 
 | # | Title | Priority | Status | Session |
 |---|---|---|---|---|
-| TASK-045 | Display elapsed time during Google Picker download | P3 | `[ ]` | — |
+| TASK-045 | Display elapsed time during Google Picker download | P3 | `[x]` | 2026-03-07-session-040 |
 
 ---
 
