@@ -7,7 +7,7 @@ import { createUniversalPhashComputer } from './heic'
 import { withConcurrency, DEFAULT_CONCURRENCY } from './concurrency'
 import { getMediaType, type MediaType } from '../shared/media-type'
 import type { KeePicDatabase } from './db/database'
-import type { IndexProgress, IndexResult } from '../shared/types'
+import type { IndexProgress, IndexResult, SkippedFile } from '../shared/types'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -41,19 +41,30 @@ function isMediaFile(name: string): boolean {
   return MEDIA_EXTENSIONS.has(extname(name).toLowerCase())
 }
 
+const SYSTEM_FILES = new Set(['.ds_store', 'thumbs.db', 'desktop.ini', '.picasa.ini'])
+
+function isSystemOrHidden(name: string): boolean {
+  if (name.startsWith('.')) return true
+  return SYSTEM_FILES.has(name.toLowerCase())
+}
+
 /**
  * Recursively walks the library folder structure and collects all image files.
  * Only descends into year folders (`\d{4}`) at the root level.
  * Returns an array of relative paths: "YYYY/subfolder/filename".
  */
-export function scanLibraryFiles(libraryPath: string): string[] {
+export function scanLibraryFiles(libraryPath: string): {
+  files: string[]
+  skippedFiles: SkippedFile[]
+} {
   const files: string[] = []
+  const skippedFiles: SkippedFile[] = []
   let entries: Dirent<string>[]
 
   try {
     entries = readdirSync(libraryPath, { withFileTypes: true })
   } catch {
-    return files
+    return { files, skippedFiles }
   }
 
   for (const yearEntry of entries) {
@@ -79,14 +90,24 @@ export function scanLibraryFiles(libraryPath: string): string[] {
       }
 
       for (const fileEntry of fileEntries) {
-        if (fileEntry.isFile() && isMediaFile(fileEntry.name)) {
-          files.push(`${yearEntry.name}/${subEntry.name}/${fileEntry.name}`)
+        if (!fileEntry.isFile()) continue
+        const relativePath = `${yearEntry.name}/${subEntry.name}/${fileEntry.name}`
+        if (isSystemOrHidden(fileEntry.name)) {
+          // Silently skip system/hidden files
+        } else if (isMediaFile(fileEntry.name)) {
+          files.push(relativePath)
+        } else {
+          skippedFiles.push({
+            path: relativePath,
+            reason: 'unrecognized-extension',
+            extension: extname(fileEntry.name).toLowerCase() || undefined
+          })
         }
       }
     }
   }
 
-  return files
+  return { files, skippedFiles }
 }
 
 // ---------------------------------------------------------------------------
@@ -219,7 +240,7 @@ export async function runIndexer(
   const computePhash = options.computePhash ?? createUniversalPhashComputer()
   const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY
 
-  const relativePaths = scanLibraryFiles(libraryPath)
+  const { files: relativePaths, skippedFiles } = scanLibraryFiles(libraryPath)
   const total = relativePaths.length
 
   // Initial progress: signal scan complete, Phase 1 starting
@@ -318,5 +339,11 @@ export async function runIndexer(
   const now = new Date().toISOString()
   const deleted = markDeleted(db, presentPaths, now)
 
-  return { indexed, skipped, deleted, errors }
+  // Add indexing errors to skipped files
+  const allSkippedFiles: SkippedFile[] = [...skippedFiles]
+  for (const err of errors) {
+    allSkippedFiles.push({ path: err.file, reason: 'error' })
+  }
+
+  return { indexed, skipped, deleted, errors, skippedFiles: allSkippedFiles }
 }

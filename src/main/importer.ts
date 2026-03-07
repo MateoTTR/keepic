@@ -25,7 +25,8 @@ import type {
   ImportProgress,
   ImportResult,
   ImportStatus,
-  PlanProgress
+  PlanProgress,
+  SkippedFile
 } from '../shared/types'
 
 // ---------------------------------------------------------------------------
@@ -60,6 +61,13 @@ function isImportableMedia(name: string): boolean {
   return IMPORT_MEDIA_EXTENSIONS.has(extname(name).toLowerCase())
 }
 
+const SYSTEM_FILES = new Set(['.ds_store', 'thumbs.db', 'desktop.ini', '.picasa.ini'])
+
+function isSystemOrHidden(name: string): boolean {
+  if (name.startsWith('.')) return true
+  return SYSTEM_FILES.has(name.toLowerCase())
+}
+
 /**
  * Finds a free destination path by appending _1, _2, ... _99 to the stem.
  * Returns null if no free slot is found after 99 attempts.
@@ -91,13 +99,16 @@ function resolveCollision(
  * Recursively walks a source folder and classifies files into:
  * - candidates: supported image files to import
  * - livePhotoVideos: .MOV/.MP4 files identified as Live Photo companions (to discard)
+ * - skippedFiles: files that were ignored (Live Photo videos, unrecognized extensions)
  */
 export function scanSourceFiles(sourceFolder: string): {
   candidates: string[]
   livePhotoVideos: string[]
+  skippedFiles: SkippedFile[]
 } {
   const candidates: string[] = []
   const livePhotoVideos: string[] = []
+  const skippedFiles: SkippedFile[] = []
 
   function walk(dir: string): void {
     let entries
@@ -111,17 +122,26 @@ export function scanSourceFiles(sourceFolder: string): {
       if (entry.isDirectory()) {
         walk(fullPath)
       } else if (entry.isFile()) {
-        if (isLivePhotoVideoExtension(entry.name) && isLivePhotoVideo(fullPath)) {
+        if (isSystemOrHidden(entry.name)) {
+          // Silently skip system/hidden files
+        } else if (isLivePhotoVideoExtension(entry.name) && isLivePhotoVideo(fullPath)) {
           livePhotoVideos.push(fullPath)
+          skippedFiles.push({ path: fullPath, reason: 'live-photo' })
         } else if (isImportableMedia(entry.name)) {
           candidates.push(fullPath)
+        } else {
+          skippedFiles.push({
+            path: fullPath,
+            reason: 'unrecognized-extension',
+            extension: extname(entry.name).toLowerCase() || undefined
+          })
         }
       }
     }
   }
 
   walk(sourceFolder)
-  return { candidates, livePhotoVideos }
+  return { candidates, livePhotoVideos, skippedFiles }
 }
 
 // ---------------------------------------------------------------------------
@@ -182,7 +202,7 @@ export async function buildImportPlan(
 
   let stagingDirCreated = false
 
-  const { candidates, livePhotoVideos } = scanSourceFiles(sourceFolder)
+  const { candidates, livePhotoVideos, skippedFiles } = scanSourceFiles(sourceFolder)
   const total = candidates.length
 
   // Initial progress: signal scan complete, Phase 1 starting
@@ -346,7 +366,8 @@ export async function buildImportPlan(
   return {
     entries,
     livePhotosDiscarded: livePhotoVideos.length,
-    sourceFolder
+    sourceFolder,
+    skippedFiles
   }
 }
 
@@ -672,11 +693,18 @@ export async function executeImportPlan(
     finishedAt
   })
 
+  // Build skippedFiles: start with planner-collected skipped files, add execution errors
+  const allSkippedFiles: SkippedFile[] = [...(plan.skippedFiles ?? [])]
+  for (const err of errors) {
+    allSkippedFiles.push({ path: err.sourcePath, reason: 'error' })
+  }
+
   return {
     imported,
     skipped: duplicateCount,
     livePhotosDiscarded: plan.livePhotosDiscarded,
     errors,
-    status
+    status,
+    skippedFiles: allSkippedFiles
   }
 }

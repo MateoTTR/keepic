@@ -62,6 +62,7 @@ export interface IndexResult {
   skipped: number
   deleted: number
   errors: Array<{ file: string; error: string }>
+  skippedFiles: SkippedFile[]
 }
 
 export interface ImportProgress {
@@ -98,6 +99,7 @@ export interface ImportPlan {
   entries: ImportPlanEntry[]
   livePhotosDiscarded: number
   sourceFolder: string
+  skippedFiles: SkippedFile[]
 }
 
 export interface PlanProgress {
@@ -112,6 +114,7 @@ export interface ImportResult {
   livePhotosDiscarded: number
   errors: Array<{ sourcePath: string; error: string }>
   status: ImportStatus
+  skippedFiles: SkippedFile[]
 }
 
 export interface GoogleAuthStatus {
@@ -148,6 +151,14 @@ export interface PickerSession {
   id: string
   pickerUri: string
   mediaItemsSet: boolean
+}
+
+export type SkippedFileReason = 'live-photo' | 'unrecognized-extension' | 'error'
+
+export interface SkippedFile {
+  path: string
+  reason: SkippedFileReason
+  extension?: string
 }
 
 export interface DuplicatePhoto {

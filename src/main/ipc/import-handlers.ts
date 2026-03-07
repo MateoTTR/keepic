@@ -144,7 +144,8 @@ export function handleExecute(
         skipped: 0,
         livePhotosDiscarded: plan.livePhotosDiscarded,
         errors: [{ sourcePath: '', error: msg.message as string }],
-        status: 'failed'
+        status: 'failed',
+        skippedFiles: []
       })
     }
   })
@@ -156,7 +157,8 @@ export function handleExecute(
       skipped: 0,
       livePhotosDiscarded: plan.livePhotosDiscarded,
       errors: [{ sourcePath: '', error: err.message }],
-      status: 'failed'
+      status: 'failed',
+      skippedFiles: []
     })
   })
 
@@ -168,7 +170,8 @@ export function handleExecute(
         skipped: 0,
         livePhotosDiscarded: plan.livePhotosDiscarded,
         errors: [{ sourcePath: '', error: `Worker exited unexpectedly (code ${code})` }],
-        status: 'failed'
+        status: 'failed',
+        skippedFiles: []
       })
     }
   })
