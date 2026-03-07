@@ -22,6 +22,10 @@
   let execProgress: ImportProgress | null = $state(null)
   let importResult: ImportResult | null = $state(null)
   let googleAuthStatus: GoogleAuthStatus | null = $state(null)
+  let planStartTime: number = $state(0)
+  let analysisElapsedMs: number = $state(0)
+  let execStartTime: number = $state(0)
+  let execElapsedMs: number = $state(0)
 
   onMount(async () => {
     config = await window.keepic.config.get()
@@ -40,11 +44,13 @@
     googleDownloadDir = result.downloadDir
     sourceFolder = result.downloadDir
     planProgress = null
+    planStartTime = Date.now()
     currentScreen = 'planning'
   }
 
   function handleAnalyse(): void {
     planProgress = null
+    planStartTime = Date.now()
     currentScreen = 'planning'
   }
 
@@ -53,6 +59,7 @@
   }
 
   function handlePlanSuccess(result: { entries: ImportPlanEntry[]; livePhotosDiscarded: number }): void {
+    analysisElapsedMs = Date.now() - planStartTime
     plan = result.entries
     livePhotosDiscarded = result.livePhotosDiscarded
     currentScreen = 'review'
@@ -65,6 +72,7 @@
   function handleImport(modifiedPlan: ImportPlanEntry[]): void {
     plan = modifiedPlan
     execProgress = null
+    execStartTime = Date.now()
     currentScreen = 'executing'
   }
 
@@ -73,6 +81,7 @@
   }
 
   function handleExecComplete(result: ImportResult): void {
+    execElapsedMs = Date.now() - execStartTime
     importResult = result
     currentScreen = 'result'
   }
@@ -106,6 +115,10 @@
   function handleReindex(): void {
     currentScreen = 'reindex'
   }
+
+  function handleHeicModeChange(mode: AppConfig['heic']['mode']): void {
+    if (config) config = { ...config, heic: { ...config.heic, mode } }
+  }
 </script>
 
 <div class="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -113,9 +126,11 @@
     {#if currentScreen === 'home'}
       <HomeScreen
         libraryPath={config?.libraryPath ?? null}
+        heicMode={config?.heic.mode ?? 'keep'}
         {sourceFolder}
         {googleAuthStatus}
         onLibraryPathChange={handleLibraryPathChange}
+        onHeicModeChange={handleHeicModeChange}
         onSourceFolder={handleSourceFolder}
         onAnalyse={handleAnalyse}
         onGoogleImport={handleGoogleImport}
@@ -139,6 +154,7 @@
       <ReviewScreen
         {plan}
         {livePhotosDiscarded}
+        {analysisElapsedMs}
         onImport={handleImport}
         onCancel={handleReset}
       />
@@ -151,6 +167,7 @@
     {:else if currentScreen === 'result'}
       <ResultScreen
         result={importResult}
+        elapsedMs={execElapsedMs}
         onImportMore={handleReset}
         onDone={handleReset}
       />

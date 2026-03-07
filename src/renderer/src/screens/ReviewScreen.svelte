@@ -3,16 +3,17 @@
   import Button from '../components/ui/Button.svelte'
   import Badge from '../components/ui/Badge.svelte'
   import Separator from '../components/ui/Separator.svelte'
-  import { formatBytes, formatDate } from '../utils'
+  import { formatBytes, formatDate, formatElapsed } from '../utils'
 
   interface Props {
     plan: ImportPlanEntry[]
     livePhotosDiscarded: number
+    analysisElapsedMs: number
     onImport: (modifiedPlan: ImportPlanEntry[]) => void
     onCancel: () => void
   }
 
-  let { plan, livePhotosDiscarded, onImport, onCancel }: Props = $props()
+  let { plan, livePhotosDiscarded, analysisElapsedMs, onImport, onCancel }: Props = $props()
 
   // Local mutable copy so user can toggle duplicates to "ready"
   let localPlan: ImportPlanEntry[] = $state(plan.map((e) => ({ ...e })))
@@ -76,6 +77,7 @@
   <div class="p-6 space-y-3">
     <h2 class="text-xl font-semibold text-gray-900">
       Import plan — {localPlan.length} file{localPlan.length !== 1 ? 's' : ''}
+      <span class="text-sm font-normal text-gray-400 ml-2">analysed in {formatElapsed(analysisElapsedMs)}</span>
     </h2>
 
     <!-- Summary bar -->

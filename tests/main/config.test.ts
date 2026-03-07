@@ -231,6 +231,27 @@ describe('ConfigManager', () => {
     expect(JSON.parse(raw).libraryPath).toBeNull()
   })
 
+  // --- setHeicConfig() ---
+
+  it('setHeicConfig() updates the heic config in memory', () => {
+    cfg.setHeicConfig({ mode: 'convert', jpegQuality: 75 })
+    expect(cfg.get().heic).toEqual({ mode: 'convert', jpegQuality: 75 })
+  })
+
+  it('setHeicConfig() persists to disk immediately', () => {
+    cfg.setHeicConfig({ mode: 'convert', jpegQuality: 80 })
+    const raw = readFileSync(join(tmpDir, 'config.json'), 'utf-8')
+    const parsed = JSON.parse(raw)
+    expect(parsed.heic.mode).toBe('convert')
+    expect(parsed.heic.jpegQuality).toBe(80)
+  })
+
+  it('setHeicConfig() does not affect libraryPath', () => {
+    cfg.setLibraryPath('/mnt/nas')
+    cfg.setHeicConfig({ mode: 'convert', jpegQuality: 85 })
+    expect(cfg.get().libraryPath).toBe('/mnt/nas')
+  })
+
   // --- round-trip ---
 
   it('load() after setLibraryPath() round-trips correctly', () => {

@@ -5,6 +5,7 @@ import { join } from 'path'
 import { ConfigManager } from '../../../src/main/config'
 import {
   handleGetConfig,
+  handleSetHeicConfig,
   validateLibraryPath,
   handleSelectLibraryFolder,
   type ShowOpenDialogFn,
@@ -51,6 +52,44 @@ describe('handleGetConfig', () => {
     cfg.setLibraryPath('/some/path')
     const result = handleGetConfig(cfg)
     expect(result.libraryPath).toBe('/some/path')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// handleSetHeicConfig
+// ---------------------------------------------------------------------------
+
+describe('handleSetHeicConfig', () => {
+  let cfgDir: string
+  let cfg: ConfigManager
+
+  beforeEach(() => {
+    cfgDir = makeTempDir()
+    cfg = new ConfigManager(cfgDir)
+    cfg.load()
+  })
+
+  afterEach(() => {
+    rmSync(cfgDir, { recursive: true, force: true })
+  })
+
+  it('updates heic mode and returns updated config', () => {
+    const result = handleSetHeicConfig(cfg, { mode: 'convert', jpegQuality: 80 })
+    expect(result.heic.mode).toBe('convert')
+    expect(result.heic.jpegQuality).toBe(80)
+  })
+
+  it('does not modify library path', () => {
+    cfg.setLibraryPath('/some/path')
+    handleSetHeicConfig(cfg, { mode: 'convert', jpegQuality: 90 })
+    expect(cfg.get().libraryPath).toBe('/some/path')
+  })
+
+  it('persists the change to disk', () => {
+    handleSetHeicConfig(cfg, { mode: 'convert', jpegQuality: 75 })
+    const cfg2 = new ConfigManager(cfgDir)
+    cfg2.load()
+    expect(cfg2.get().heic).toEqual({ mode: 'convert', jpegQuality: 75 })
   })
 })
 

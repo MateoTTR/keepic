@@ -18,7 +18,9 @@ const keepicAPI = {
   config: {
     get: (): Promise<AppConfig> => ipcRenderer.invoke('config:get'),
     selectLibraryFolder: (): Promise<SelectLibraryFolderResult> =>
-      ipcRenderer.invoke('config:select-library-folder')
+      ipcRenderer.invoke('config:select-library-folder'),
+    setHeicConfig: (heic: AppConfig['heic']): Promise<AppConfig> =>
+      ipcRenderer.invoke('config:set-heic-config', { heic })
   },
   library: {
     startIndex: (): Promise<{ started?: boolean; alreadyRunning?: boolean; error?: string }> =>

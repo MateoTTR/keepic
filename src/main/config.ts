@@ -61,6 +61,12 @@ export class ConfigManager {
     this.config = { ...this.config, libraryPath: path }
     this.save()
   }
+
+  /** Sets the HEIC configuration and persists immediately. */
+  setHeicConfig(heic: AppConfig['heic']): void {
+    this.config = { ...this.config, heic }
+    this.save()
+  }
 }
 
 /**
