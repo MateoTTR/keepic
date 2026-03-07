@@ -20,6 +20,7 @@
           ],
           "conditions": [
             ["OS=='win'", {
+              "defines": ["LIBHEIF_STATIC_BUILD", "LIBDE265_STATIC_BUILD"],
               "libraries": [
                 "<(module_root_dir)/deps/lib/heif.lib",
                 "<(module_root_dir)/deps/lib/libde265.lib"
