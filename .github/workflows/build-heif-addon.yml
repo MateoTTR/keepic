@@ -1,0 +1,108 @@
+name: Build HEIF Addon Prebuilds
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'packages/heif-decode/**'
+    branches: [develop, main]
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux
+            arch: x64
+          - os: windows-latest
+            platform: win32
+            arch: x64
+          - os: macos-13
+            platform: darwin
+            arch: x64
+          - os: macos-14
+            platform: darwin
+            arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Windows: install MSVC build tools
+      - name: Setup MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # Install cmake (Ubuntu)
+      - name: Install cmake (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake
+
+      # Build static deps (libde265 + libheif)
+      - name: Build static dependencies
+        shell: bash
+        working-directory: packages/heif-decode
+        run: bash scripts/build-deps.sh
+
+      # Install node deps (node-addon-api, node-gyp-build)
+      - name: Install addon dependencies
+        working-directory: packages/heif-decode
+        run: npm install --ignore-scripts
+
+      # Build the addon with static linking
+      - name: Build addon (static)
+        working-directory: packages/heif-decode
+        run: npx node-gyp rebuild --heif_static=true
+
+      # Create prebuild directory structure
+      - name: Package prebuild
+        shell: bash
+        working-directory: packages/heif-decode
+        run: |
+          PREBUILD_DIR="prebuilds/${{ matrix.platform }}-${{ matrix.arch }}"
+          mkdir -p "$PREBUILD_DIR"
+          if [ "${{ matrix.platform }}" = "win32" ]; then
+            cp build/Release/heif_decode.node "$PREBUILD_DIR/"
+          else
+            cp build/Release/heif_decode.node "$PREBUILD_DIR/"
+            strip "$PREBUILD_DIR/heif_decode.node" 2>/dev/null || true
+          fi
+          echo "Prebuild size:"
+          ls -lh "$PREBUILD_DIR/"
+
+      # Upload prebuild artifact
+      - name: Upload prebuild
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuild-${{ matrix.platform }}-${{ matrix.arch }}
+          path: packages/heif-decode/prebuilds/
+          retention-days: 90
+
+  # Combine all prebuilds into one artifact
+  combine:
+    name: Combine prebuilds
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all prebuilds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: prebuild-*
+          path: prebuilds/
+          merge-multiple: true
+
+      - name: Upload combined prebuilds
+        uses: actions/upload-artifact@v4
+        with:
+          name: heif-decode-prebuilds
+          path: prebuilds/
+          retention-days: 90

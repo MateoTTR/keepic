@@ -65,7 +65,7 @@ export function isLivePhotoVideo(
 }
 
 // ---------------------------------------------------------------------------
-// HEIC full-image decode via libheif-node-dy (native N-API)
+// HEIC full-image decode via @keepic/heif-decode (native N-API, static libheif)
 // ---------------------------------------------------------------------------
 
 /** Result of decoding a HEIC file to raw RGBA pixels. */
@@ -88,13 +88,13 @@ let _libheif: LibheifModule | undefined
 function getLibheif(): LibheifModule {
   if (!_libheif) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    _libheif = require('libheif-node-dy') as LibheifModule
+    _libheif = require('@keepic/heif-decode') as LibheifModule
   }
   return _libheif
 }
 
 /**
- * Default HEIC decoder using the libheif-node-dy native N-API addon.
+ * Default HEIC decoder using the @keepic/heif-decode native N-API addon.
  * Decodes the full tile-grid-assembled image at native resolution.
  *
  * This is synchronous under the hood (blocks the calling thread).
@@ -119,7 +119,7 @@ export async function defaultHeicDecode(buffer: Buffer): Promise<HeicDecodeResul
 export type HeicConverter = (src: string, dest: string, quality: number) => Promise<void>
 
 /**
- * Creates a HeicConverter backed by libheif-node-dy (native N-API) + sharp.
+ * Creates a HeicConverter backed by @keepic/heif-decode (native N-API) + sharp.
  *
  * Decodes the full-resolution HEIC image via libheif, then encodes to JPEG
  * via sharp at the specified quality level.
@@ -156,7 +156,7 @@ export interface UniversalPhashComputerOptions {
 /**
  * Creates a PhashComputer that handles both HEIC/HEIF and regular image files.
  *
- * - HEIC/HEIF: decodes full image via libheif-node-dy (native N-API), pipes RGBA
+ * - HEIC/HEIF: decodes full image via @keepic/heif-decode (native N-API), pipes RGBA
  *   pixels through sharp for resize + greyscale, then computes DCT hash.
  *   This produces a correct full-image pHash (not just tile 0).
  * - All other formats: delegates directly to native sharp.

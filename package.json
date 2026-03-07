@@ -29,7 +29,7 @@
     "electron-updater": "^6.1.7",
     "exifreader": "^4.36.2",
     "keytar": "^7.9.0",
-    "libheif-node-dy": "^0.3.1",
+    "@keepic/heif-decode": "file:packages/heif-decode",
     "sharp": "^0.33.3",
     "tailwind-variants": "^3.2.2"
   },
@@ -66,7 +66,7 @@
       "node_modules/better-sqlite3/**",
       "node_modules/keytar/**",
       "node_modules/sharp/**",
-      "node_modules/libheif-node-dy/**"
+      "node_modules/@keepic/heif-decode/**"
     ],
     "win": {
       "target": "nsis",

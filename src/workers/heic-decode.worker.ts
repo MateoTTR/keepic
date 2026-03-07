@@ -1,5 +1,5 @@
 /**
- * Worker thread for native HEIC decoding via libheif-node-dy.
+ * Worker thread for native HEIC decoding via @keepic/heif-decode.
  *
  * Receives HEIC file buffers, decodes them using the native libheif N-API
  * addon, and returns raw RGBA pixels via transferList (zero-copy).
@@ -11,7 +11,7 @@
  */
 import { parentPort } from 'worker_threads'
 
-// libheif-node-dy is a CommonJS N-API addon; use createRequire for ESM compat
+// @keepic/heif-decode is a CommonJS N-API addon; use createRequire for ESM compat
 import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 
@@ -20,7 +20,7 @@ interface LibheifModule {
   getInfo(buffer: Buffer): { width: number; height: number }
 }
 
-const libheif: LibheifModule = require('libheif-node-dy')
+const libheif: LibheifModule = require('@keepic/heif-decode')
 
 parentPort!.postMessage({ type: 'ready' })
 
