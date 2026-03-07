@@ -302,6 +302,8 @@ export async function runIndexer(
   const presentPaths = new Set<string>()
   const errors: Array<{ file: string; error: string }> = []
   let indexed = 0
+  let indexedPhotos = 0
+  let indexedVideos = 0
   let skipped = 0
 
   for (let i = 0; i < phase1Results.length; i++) {
@@ -331,6 +333,8 @@ export async function runIndexer(
         now
       })
       indexed++
+      if (result.mediaType === 'video') indexedVideos++
+      else indexedPhotos++
     }
 
     onProgress({ total, processed: i + 1, indexed, skipped })
@@ -345,5 +349,5 @@ export async function runIndexer(
     allSkippedFiles.push({ path: err.file, reason: 'error' })
   }
 
-  return { indexed, skipped, deleted, errors, skippedFiles: allSkippedFiles }
+  return { indexed, indexedPhotos, indexedVideos, skipped, deleted, errors, skippedFiles: allSkippedFiles }
 }

@@ -32,6 +32,12 @@
   const unrecognizedSkipped = $derived(skippedFiles.filter((f: SkippedFile) => f.reason === 'unrecognized-extension'))
   const errorSkipped = $derived(skippedFiles.filter((f: SkippedFile) => f.reason === 'error'))
 
+  function formatMediaLabel(photos: number, videos: number): string {
+    if (videos === 0) return `photo${photos !== 1 ? 's' : ''}`
+    if (photos === 0) return `video${videos !== 1 ? 's' : ''}`
+    return `file${photos + videos !== 1 ? 's' : ''} (${photos} photo${photos !== 1 ? 's' : ''}, ${videos} video${videos !== 1 ? 's' : ''})`
+  }
+
   function displayPath(fullPath: string): string {
     return fullPath.split(/[/\\]/).slice(-2).join('/')
   }
@@ -47,7 +53,7 @@
 
   {#if result}
     <div class="space-y-1 text-sm text-gray-700">
-      <p><span class="font-medium w-6 inline-block text-right mr-3">{result.imported}</span> photo{result.imported !== 1 ? 's' : ''} imported</p>
+      <p><span class="font-medium w-6 inline-block text-right mr-3">{result.imported}</span> {formatMediaLabel(result.importedPhotos, result.importedVideos)} imported</p>
       <p><span class="font-medium w-6 inline-block text-right mr-3">{result.skipped}</span> duplicate{result.skipped !== 1 ? 's' : ''} skipped</p>
       {#if result.livePhotosDiscarded > 0}
         <p><span class="font-medium w-6 inline-block text-right mr-3">{result.livePhotosDiscarded}</span> Live Photo video{result.livePhotosDiscarded !== 1 ? 's' : ''} discarded</p>

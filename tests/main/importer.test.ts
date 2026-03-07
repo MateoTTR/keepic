@@ -698,6 +698,8 @@ describe('executeImportPlan', () => {
     })
 
     expect(result.imported).toBe(1)
+    expect(result.importedPhotos).toBe(1)
+    expect(result.importedVideos).toBe(0)
     expect(result.status).toBe('completed')
     expect(copied).toHaveLength(1)
     expect(moved).toHaveLength(1)
@@ -748,6 +750,8 @@ describe('executeImportPlan', () => {
 
     expect(result.imported).toBe(0)
     expect(result.skipped).toBe(1)
+    expect(result.skippedPhotos).toBe(1)
+    expect(result.skippedVideos).toBe(0)
     expect(getAllPhotos(db)).toHaveLength(0)
   })
 
