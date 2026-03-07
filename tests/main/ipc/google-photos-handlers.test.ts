@@ -105,17 +105,21 @@ describe('handleGetLastDownloadDate', () => {
 // ---------------------------------------------------------------------------
 
 describe('handleCleanupDownloadDir', () => {
-  it('calls rmDir with the provided path', () => {
-    const rmDir = vi.fn()
-    handleCleanupDownloadDir('/some/download/dir', rmDir)
+  it('calls rmDir with the provided path', async () => {
+    const rmDir = vi.fn().mockResolvedValue(undefined)
+    await handleCleanupDownloadDir('/some/download/dir', rmDir)
     expect(rmDir).toHaveBeenCalledWith('/some/download/dir')
   })
 
-  it('uses default rmSync when no rmDir dep provided', () => {
-    // We can't easily test the real rmSync without a real directory,
-    // but we verify the function is callable and doesn't throw for a non-existent path
-    // (rmSync with force:true is safe for non-existent paths)
-    expect(() => handleCleanupDownloadDir('/tmp/keepic-test-nonexistent-dir-xyz')).not.toThrow()
+  it('uses default async rm when no rmDir dep provided', async () => {
+    await expect(
+      handleCleanupDownloadDir('/tmp/keepic-test-nonexistent-dir-xyz')
+    ).resolves.toBeUndefined()
+  })
+
+  it('does not throw when rmDir rejects (best-effort cleanup)', async () => {
+    const rmDir = vi.fn().mockRejectedValue(new Error('EPERM: operation not permitted'))
+    await expect(handleCleanupDownloadDir('/some/dir', rmDir)).resolves.toBeUndefined()
   })
 })
 
