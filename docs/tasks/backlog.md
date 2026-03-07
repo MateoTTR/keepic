@@ -146,16 +146,27 @@
 
 ---
 
-## Phase 11 — Performance v2 (v0.3.x)
+## Phase 11 — HEIC Decoding Performance (v0.3.x)
 
-> True parallelism for HEIC decoding and Google Picker downloads.
-> PERF-001's `withConcurrency` runs N async workers in a single thread — effective for I/O-bound work
-> but WASM (heic-decode) blocks the V8 event loop, serializing HEIC decodes.
+> Manual testing (session 038) confirmed HEIC WASM decoding as the main bottleneck:
+> ~400-500ms/HEIC file vs ~14ms/JPEG (30-40x slower). `withConcurrency` (PERF-001)
+> provides no benefit because WASM blocks the V8 event loop.
+>
+> A PoC is needed to evaluate native decoding strategies before committing to an approach.
 
 | # | Title | Priority | Status | Session |
 |---|---|---|---|---|
-| PERF-002 | True HEIC parallel decoding — spawn N Worker threads each running heic-decode independently | P2 | `[ ]` | — |
-| PERF-003 | Concurrent Google Picker downloads — apply withConcurrency to HTTP fetches (I/O-bound) | P3 | `[ ]` | — |
+| POC-001 | HEIC decoding benchmark PoC — compare WASM vs native strategies (libheif addon, sharp rebuild, etc.) | P1 | `[ ]` | — |
+| PERF-002 | True HEIC parallel decoding — approach TBD based on POC-001 results | P2 | `[ ]` | — |
+| PERF-003 | Concurrent Google Picker downloads — apply withConcurrency to HTTP fetches (I/O-bound) | P3 | `[x]` | 2026-03-07-session-040 |
+
+---
+
+## Phase 12 — UX improvements (v0.3.x)
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| TASK-045 | Display elapsed time during Google Picker download | P3 | `[x]` | 2026-03-07-session-040 |
 
 ---
 
@@ -164,8 +175,51 @@
 | ID | Title | Type | Priority |
 |---|---|---|---|
 | [REFACTOR-001](REFACTOR-001-heic-phash-simplification.md) | Simplify HEIC pHash workflow — superseded by TASK-037 | Refactor | `[x]` |
-| TASK-040 | Native C addon (libheif) for faster HEIC decode — optional optimization | Performance | P4 |
-| FEAT-001 | Side-by-side duplicate comparison viewer with thumbnails + "Reveal in Explorer/Finder" | Feature | P4 |
+| TASK-040 | Native C addon (libheif) for faster HEIC decode — superseded by POC-001 | Performance | `[-]` |
+
+---
+
+## Phase 13 — Duplicate Viewer (FEAT-001)
+
+> Visual duplicate comparison with thumbnail previews and "Reveal in Folder" button.
+> Custom Electron protocol (`keepic-photo://`) for serving images to the sandboxed renderer.
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| FEAT-001a | Thumbnail protocol + shell IPC (backend: `thumbnail.ts`, `protocol.ts`, `shell-handlers.ts`) | P2 | `[x]` | 2026-03-07-session-039 |
+| FEAT-001b | Thumbnail UI components + screen updates (frontend: `PhotoThumbnail.svelte`, ReviewScreen, DeduplicationScreen) | P2 | `[x]` | 2026-03-07-session-039 |
+
+---
+
+## Phase 14 — Video Support (FEAT-002)
+
+> Add video file support to KeePic: index videos in the library, import from local folder
+> and Google Picker, detect and skip Live Photo video companions (.MP4/.MOV paired with .HEIC/.JPG).
+>
+> Supported video formats: `.mp4`, `.mov`, `.avi`, `.mts`, `.3gp`, `.m4v`, `.mpg`
+> Ignored formats: `.thm`, `.flv`, `.mpo`, `.dng`, `.gif`, `.psd`, and all non-media files.
+>
+> Video deduplication uses filename + file size (no pHash for videos).
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| TASK-V01 | DB migration (`media_type` column) + shared media type helpers + extend extension sets | P1 | `[x]` | 2026-03-07-session-041 |
+| TASK-V02 | Live Photo detection: extend to `.MP4` companions (not just `.MOV`), check `.JPG/.JPEG` siblings | P1 | `[x]` | 2026-03-07-session-041 |
+| TASK-V03 | Video-aware import pipeline: skip pHash for videos, filename+size dedup | P1 | `[x]` | 2026-03-07-session-041 |
+| TASK-V04 | Video-aware indexer + dedup scan + stats + video thumbnail placeholder | P1 | `[x]` | 2026-03-07-session-041 |
+
+---
+
+## Phase 15 — Import/Scan Transparency (FEAT-003)
+
+> Report skipped and unrecognized files during import and library scan so the user
+> knows exactly what KeePic ignored and why. Covers Live Photo companions, unsupported
+> formats, and any other non-imported files.
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| FEAT-003a | Backend: collect skipped/ignored file lists during import scan and library indexer (Live Photo videos, unrecognized extensions) and include them in results | P2 | `[x]` | 2026-03-07-session-042 |
+| FEAT-003b | Frontend: display skipped/ignored files in import report and re-index report (collapsible sections by category) | P2 | `[x]` | 2026-03-07-session-042 |
 
 ---
 

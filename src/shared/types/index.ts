@@ -1,5 +1,6 @@
 // Shared types between main process, workers, and renderer
 
+export type MediaType = 'photo' | 'video'
 export type DateSource = 'exif' | 'filename' | 'file_mtime' | 'import'
 export type ImportSource = 'local' | 'google_photos' | 'sd_card' | 'whatsapp'
 export type ImportStatus = 'running' | 'completed' | 'failed' | 'cancelled'
@@ -19,6 +20,7 @@ export interface Photo {
   googleId: string | null
   importedAt: string
   createdAt: string
+  mediaType: MediaType
 }
 
 export interface ImportJob {
@@ -60,6 +62,7 @@ export interface IndexResult {
   skipped: number
   deleted: number
   errors: Array<{ file: string; error: string }>
+  skippedFiles: SkippedFile[]
 }
 
 export interface ImportProgress {
@@ -89,12 +92,14 @@ export interface ImportPlanEntry {
   errorMessage?: string
   /** Absolute path to a pre-staged JPEG (set by the planner for HEIC files). */
   stagedPath?: string
+  mediaType: MediaType
 }
 
 export interface ImportPlan {
   entries: ImportPlanEntry[]
   livePhotosDiscarded: number
   sourceFolder: string
+  skippedFiles: SkippedFile[]
 }
 
 export interface PlanProgress {
@@ -109,6 +114,7 @@ export interface ImportResult {
   livePhotosDiscarded: number
   errors: Array<{ sourcePath: string; error: string }>
   status: ImportStatus
+  skippedFiles: SkippedFile[]
 }
 
 export interface GoogleAuthStatus {
@@ -147,6 +153,14 @@ export interface PickerSession {
   mediaItemsSet: boolean
 }
 
+export type SkippedFileReason = 'live-photo' | 'unrecognized-extension' | 'error'
+
+export interface SkippedFile {
+  path: string
+  reason: SkippedFileReason
+  extension?: string
+}
+
 export interface DuplicatePhoto {
   path: string
   filename: string
@@ -157,11 +171,13 @@ export interface DuplicatePhoto {
 
 export interface DuplicateGroup {
   phash: string
+  mediaType: MediaType
   photos: DuplicatePhoto[] // always 2+ items, sorted by importedAt ASC
 }
 
 export interface LibraryStats {
   totalPhotos: number
+  totalVideos: number
   totalSizeBytes: number
   oldestDate: string | null // ISO date string (YYYY-MM-DD) or null if empty
   newestDate: string | null // ISO date string (YYYY-MM-DD) or null if empty

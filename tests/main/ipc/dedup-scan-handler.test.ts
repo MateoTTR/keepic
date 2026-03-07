@@ -28,6 +28,7 @@ function insertPhoto(
     dateTaken?: string | null
     importedAt?: string
     deletedAt?: string | null
+    mediaType?: string
   } = {}
 ): void {
   const path = overrides.path ?? `/lib/photo-${++pathCounter}.jpg`
@@ -37,14 +38,15 @@ function insertPhoto(
   const dateTaken = 'dateTaken' in overrides ? overrides.dateTaken : null
   const importedAt = overrides.importedAt ?? '2025-01-01T00:00:00Z'
   const deletedAt = overrides.deletedAt ?? null
+  const mediaType = overrides.mediaType ?? 'photo'
 
   db.db
     .prepare(
       `INSERT INTO photos
-         (path, filename, source, phash, file_size, date_taken, imported_at, created_at, deleted_at)
-       VALUES (?, ?, 'local', ?, ?, ?, ?, '2025-01-01T00:00:00Z', ?)`
+         (path, filename, source, phash, file_size, date_taken, imported_at, created_at, deleted_at, media_type)
+       VALUES (?, ?, 'local', ?, ?, ?, ?, '2025-01-01T00:00:00Z', ?, ?)`
     )
-    .run(path, filename, phash, fileSize, dateTaken, importedAt, deletedAt)
+    .run(path, filename, phash, fileSize, dateTaken, importedAt, deletedAt, mediaType)
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +214,106 @@ describe('handleScanDuplicates', () => {
     expect(result).toHaveLength(1)
     expect(result[0].photos[0].dateTaken).toBeNull()
     expect(result[0].photos[1].dateTaken).toBeNull()
+  })
+
+  it('photo groups have mediaType photo', () => {
+    const db = makeDb()
+    insertPhoto(db, { path: '/lib/p1.jpg', phash: 'mt1', importedAt: '2025-01-01T00:00:00Z' })
+    insertPhoto(db, { path: '/lib/p2.jpg', phash: 'mt1', importedAt: '2025-02-01T00:00:00Z' })
+    const result = handleScanDuplicates(db)
+    expect(result).toHaveLength(1)
+    expect(result[0].mediaType).toBe('photo')
+  })
+
+  it('video duplicates grouped by filename + file_size', () => {
+    const db = makeDb()
+    insertPhoto(db, {
+      path: '/lib/2024/clip.mp4',
+      filename: 'clip.mp4',
+      phash: null,
+      fileSize: 50000,
+      mediaType: 'video',
+      importedAt: '2025-01-01T00:00:00Z'
+    })
+    insertPhoto(db, {
+      path: '/lib/2025/clip.mp4',
+      filename: 'clip.mp4',
+      phash: null,
+      fileSize: 50000,
+      mediaType: 'video',
+      importedAt: '2025-02-01T00:00:00Z'
+    })
+    const result = handleScanDuplicates(db)
+    expect(result).toHaveLength(1)
+    expect(result[0].mediaType).toBe('video')
+    expect(result[0].photos).toHaveLength(2)
+    expect(result[0].photos[0].path).toBe('/lib/2024/clip.mp4')
+    expect(result[0].photos[1].path).toBe('/lib/2025/clip.mp4')
+  })
+
+  it('videos with same filename but different size are not grouped', () => {
+    const db = makeDb()
+    insertPhoto(db, {
+      path: '/lib/a/clip.mp4',
+      filename: 'clip.mp4',
+      fileSize: 50000,
+      mediaType: 'video'
+    })
+    insertPhoto(db, {
+      path: '/lib/b/clip.mp4',
+      filename: 'clip.mp4',
+      fileSize: 99999,
+      mediaType: 'video'
+    })
+    const result = handleScanDuplicates(db)
+    expect(result).toEqual([])
+  })
+
+  it('deleted videos are excluded from dedup', () => {
+    const db = makeDb()
+    insertPhoto(db, {
+      path: '/lib/a/vid.mp4',
+      filename: 'vid.mp4',
+      fileSize: 1000,
+      mediaType: 'video',
+      importedAt: '2025-01-01T00:00:00Z'
+    })
+    insertPhoto(db, {
+      path: '/lib/b/vid.mp4',
+      filename: 'vid.mp4',
+      fileSize: 1000,
+      mediaType: 'video',
+      importedAt: '2025-02-01T00:00:00Z',
+      deletedAt: '2025-03-01T00:00:00Z'
+    })
+    const result = handleScanDuplicates(db)
+    expect(result).toEqual([])
+  })
+
+  it('returns both photo and video groups combined', () => {
+    const db = makeDb()
+    // Photo dups
+    insertPhoto(db, { path: '/lib/p1.jpg', phash: 'phdup', importedAt: '2025-01-01T00:00:00Z' })
+    insertPhoto(db, { path: '/lib/p2.jpg', phash: 'phdup', importedAt: '2025-02-01T00:00:00Z' })
+    // Video dups
+    insertPhoto(db, {
+      path: '/lib/v1.mp4',
+      filename: 'v.mp4',
+      fileSize: 5000,
+      mediaType: 'video',
+      importedAt: '2025-03-01T00:00:00Z'
+    })
+    insertPhoto(db, {
+      path: '/lib/v2.mp4',
+      filename: 'v.mp4',
+      fileSize: 5000,
+      mediaType: 'video',
+      importedAt: '2025-04-01T00:00:00Z'
+    })
+    const result = handleScanDuplicates(db)
+    expect(result).toHaveLength(2)
+    const mediaTypes = result.map((g) => g.mediaType).sort()
+    expect(mediaTypes).toEqual(['photo', 'video'])
   })
 
   it('photo fields are mapped correctly: path, filename, fileSize, dateTaken, importedAt', () => {

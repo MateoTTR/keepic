@@ -5,14 +5,15 @@ import { readExifDate, defaultExifLoader, type ExifLoader } from './exif'
 import { type PhashComputer, type PhashResult } from './phash'
 import { createUniversalPhashComputer } from './heic'
 import { withConcurrency, DEFAULT_CONCURRENCY } from './concurrency'
+import { getMediaType, type MediaType } from '../shared/media-type'
 import type { KeePicDatabase } from './db/database'
-import type { IndexProgress, IndexResult } from '../shared/types'
+import type { IndexProgress, IndexResult, SkippedFile } from '../shared/types'
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const IMAGE_EXTENSIONS = new Set([
+const MEDIA_EXTENSIONS = new Set([
   '.jpg',
   '.jpeg',
   '.heic',
@@ -22,15 +23,29 @@ const IMAGE_EXTENSIONS = new Set([
   '.tif',
   '.cr2',
   '.nef',
-  '.arw'
+  '.arw',
+  '.mp4',
+  '.mov',
+  '.avi',
+  '.mts',
+  '.3gp',
+  '.m4v',
+  '.mpg'
 ])
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function isImageFile(name: string): boolean {
-  return IMAGE_EXTENSIONS.has(extname(name).toLowerCase())
+function isMediaFile(name: string): boolean {
+  return MEDIA_EXTENSIONS.has(extname(name).toLowerCase())
+}
+
+const SYSTEM_FILES = new Set(['.ds_store', 'thumbs.db', 'desktop.ini', '.picasa.ini'])
+
+function isSystemOrHidden(name: string): boolean {
+  if (name.startsWith('.')) return true
+  return SYSTEM_FILES.has(name.toLowerCase())
 }
 
 /**
@@ -38,14 +53,18 @@ function isImageFile(name: string): boolean {
  * Only descends into year folders (`\d{4}`) at the root level.
  * Returns an array of relative paths: "YYYY/subfolder/filename".
  */
-export function scanLibraryFiles(libraryPath: string): string[] {
+export function scanLibraryFiles(libraryPath: string): {
+  files: string[]
+  skippedFiles: SkippedFile[]
+} {
   const files: string[] = []
+  const skippedFiles: SkippedFile[] = []
   let entries: Dirent<string>[]
 
   try {
     entries = readdirSync(libraryPath, { withFileTypes: true })
   } catch {
-    return files
+    return { files, skippedFiles }
   }
 
   for (const yearEntry of entries) {
@@ -71,14 +90,24 @@ export function scanLibraryFiles(libraryPath: string): string[] {
       }
 
       for (const fileEntry of fileEntries) {
-        if (fileEntry.isFile() && isImageFile(fileEntry.name)) {
-          files.push(`${yearEntry.name}/${subEntry.name}/${fileEntry.name}`)
+        if (!fileEntry.isFile()) continue
+        const relativePath = `${yearEntry.name}/${subEntry.name}/${fileEntry.name}`
+        if (isSystemOrHidden(fileEntry.name)) {
+          // Silently skip system/hidden files
+        } else if (isMediaFile(fileEntry.name)) {
+          files.push(relativePath)
+        } else {
+          skippedFiles.push({
+            path: relativePath,
+            reason: 'unrecognized-extension',
+            extension: extname(fileEntry.name).toLowerCase() || undefined
+          })
         }
       }
     }
   }
 
-  return files
+  return { files, skippedFiles }
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +137,7 @@ function upsertPhoto(
     height: number | null
     fileSize: number
     fileMtime: string
+    mediaType: MediaType
     now: string
   }
 ): void {
@@ -116,8 +146,8 @@ function upsertPhoto(
       `INSERT INTO photos
          (path, filename, phash, date_taken, date_taken_source,
           width, height, file_size, file_mtime, source,
-          google_id, imported_at, created_at, deleted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', NULL, ?, ?, NULL)
+          google_id, imported_at, created_at, deleted_at, media_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', NULL, ?, ?, NULL, ?)
        ON CONFLICT(path) DO UPDATE SET
          phash             = excluded.phash,
          date_taken        = excluded.date_taken,
@@ -126,6 +156,7 @@ function upsertPhoto(
          height            = excluded.height,
          file_size         = excluded.file_size,
          file_mtime        = excluded.file_mtime,
+         media_type        = excluded.media_type,
          deleted_at        = NULL`
     )
     .run(
@@ -139,7 +170,8 @@ function upsertPhoto(
       params.fileSize,
       params.fileMtime,
       params.now,
-      params.now
+      params.now,
+      params.mediaType
     )
 }
 
@@ -172,15 +204,18 @@ export interface RunIndexerOptions {
 /** Result of Phase 1 processing for a single file. */
 interface IndexFileResult {
   relativePath: string
-  skipped: true | {
-    absolutePath: string
-    phashResult: PhashResult | null
-    exifDate: Date
-    exifSource: string
-    fileSize: number
-    fileMtime: string
-    error?: { file: string; error: string }
-  }
+  mediaType: MediaType
+  skipped:
+    | true
+    | {
+        absolutePath: string
+        phashResult: PhashResult | null
+        exifDate: Date
+        exifSource: string
+        fileSize: number
+        fileMtime: string
+        error?: { file: string; error: string }
+      }
 }
 
 /**
@@ -205,7 +240,7 @@ export async function runIndexer(
   const computePhash = options.computePhash ?? createUniversalPhashComputer()
   const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY
 
-  const relativePaths = scanLibraryFiles(libraryPath)
+  const { files: relativePaths, skippedFiles } = scanLibraryFiles(libraryPath)
   const total = relativePaths.length
 
   // Initial progress: signal scan complete, Phase 1 starting
@@ -218,6 +253,7 @@ export async function runIndexer(
     concurrency,
     async (relativePath): Promise<IndexFileResult> => {
       const absolutePath = join(libraryPath, relativePath)
+      const mediaType = getMediaType(relativePath)
       const stat = statSync(absolutePath)
       const fileMtime = stat.mtime.toISOString()
 
@@ -225,17 +261,19 @@ export async function runIndexer(
       if (storedMtime === fileMtime) {
         phase1Processed++
         onProgress({ total, processed: phase1Processed, indexed: 0, skipped: 0 })
-        return { relativePath, skipped: true }
+        return { relativePath, mediaType, skipped: true }
       }
 
       let phashResult: PhashResult | null = null
       let error: { file: string; error: string } | undefined
-      try {
-        phashResult = await computePhash(absolutePath)
-      } catch (err) {
-        error = {
-          file: relativePath,
-          error: err instanceof Error ? err.message : String(err)
+      if (mediaType !== 'video') {
+        try {
+          phashResult = await computePhash(absolutePath)
+        } catch (err) {
+          error = {
+            file: relativePath,
+            error: err instanceof Error ? err.message : String(err)
+          }
         }
       }
 
@@ -246,6 +284,7 @@ export async function runIndexer(
 
       return {
         relativePath,
+        mediaType,
         skipped: {
           absolutePath,
           phashResult,
@@ -288,6 +327,7 @@ export async function runIndexer(
         height: data.phashResult?.height ?? null,
         fileSize: data.fileSize,
         fileMtime: data.fileMtime,
+        mediaType: result.mediaType,
         now
       })
       indexed++
@@ -299,5 +339,11 @@ export async function runIndexer(
   const now = new Date().toISOString()
   const deleted = markDeleted(db, presentPaths, now)
 
-  return { indexed, skipped, deleted, errors }
+  // Add indexing errors to skipped files
+  const allSkippedFiles: SkippedFile[] = [...skippedFiles]
+  for (const err of errors) {
+    allSkippedFiles.push({ path: err.file, reason: 'error' })
+  }
+
+  return { indexed, skipped, deleted, errors, skippedFiles: allSkippedFiles }
 }

@@ -23,11 +23,14 @@ export interface LibraryStatsDeps {
 export function handleGetLibraryStats(db: KeePicDatabase): LibraryStats {
   const totals = db.db
     .prepare(
-      `SELECT COUNT(*) AS totalPhotos, COALESCE(SUM(file_size), 0) AS totalSizeBytes
+      `SELECT
+         COUNT(*) FILTER (WHERE media_type = 'photo') AS totalPhotos,
+         COUNT(*) FILTER (WHERE media_type = 'video') AS totalVideos,
+         COALESCE(SUM(file_size), 0) AS totalSizeBytes
        FROM photos
        WHERE deleted_at IS NULL`
     )
-    .get() as { totalPhotos: number; totalSizeBytes: number }
+    .get() as { totalPhotos: number; totalVideos: number; totalSizeBytes: number }
 
   const dateRange = db.db
     .prepare(
@@ -64,6 +67,7 @@ export function handleGetLibraryStats(db: KeePicDatabase): LibraryStats {
 
   return {
     totalPhotos: totals.totalPhotos,
+    totalVideos: totals.totalVideos,
     totalSizeBytes: totals.totalSizeBytes,
     oldestDate: dateRange.oldestDate,
     newestDate: dateRange.newestDate,

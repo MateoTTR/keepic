@@ -11,7 +11,7 @@
 
 ## 1. System Context
 
-KeePic is a **desktop application** (Electron, Windows + macOS) used by **multiple users** who share a common library folder synchronized via a Synology NAS (Synology Drive). Each user runs their own instance of KeePic with its own local index. There is no central server — the shared folder is the single source of truth for photo files.
+KeePic is a **desktop application** (Electron, Windows + macOS) used by **multiple users** who share a common library folder synchronized via a Synology NAS (Synology Drive). Each user runs their own instance of KeePic with its own local index. There is no central server — the shared folder is the single source of truth for media files (photos and videos).
 
 The app is **append-only**: it never modifies or deletes files already in the shared folder.
 
@@ -64,6 +64,7 @@ The app is **append-only**: it never modifies or deletes files already in the sh
 - Web-based interface in the Electron renderer
 - Responsibilities: import wizard, settings screen, progress display, duplicate review
 - Communicates with Main Process via IPC (contextBridge)
+- **Image display**: local photo files are served to the renderer via a custom Electron protocol (`keepic-photo://`) registered with `protocol.handle()`. The renderer uses standard `<img src="keepic-photo://thumbnail?path=...">` tags. The protocol handler reads the file, resizes it via sharp (300px max), and returns a JPEG buffer. HEIC files are decoded via an injectable `HeicDecodeFn` (defaults to heic-decode WASM).
 - In v1: no photo browser (users use OS file explorer)
 
 ### 3.2 Main Process
@@ -103,7 +104,7 @@ Separate threads spawned by the main process for CPU-intensive tasks:
 Windows:  %APPDATA%\KeePic\
 macOS:    ~/Library/Application Support/KeePic/
 ├── config.json    ← library path, user preferences
-├── index.db       ← SQLite: photo hashes, metadata, import history
+├── index.db       ← SQLite: media hashes, metadata, import history (photos + videos)
 ├── thumbs/        ← thumbnail cache (future use)
 └── temp/          ← import staging area (cleaned after each import)
 ```
@@ -122,12 +123,12 @@ Index worker: walk all folders matching \d{4} at library root
   (all other root-level folders are ignored)
         │
         ▼
-For each image file found:
+For each media file (photo or video) found:
   ├─ Path + mtime unchanged → skip (already indexed)
   └─ New or modified:
-       ├─ Read EXIF → extract date
-       ├─ Compute pHash
-       └─ Upsert record in index.db
+       ├─ Read EXIF/metadata → extract date
+       ├─ Compute pHash (photos only; skipped for videos)
+       └─ Upsert record in index.db (with media_type = 'photo' or 'video')
         │
         ▼
 Mark DB records for files no longer on disk as deleted
@@ -139,20 +140,22 @@ Mark DB records for files no longer on disk as deleted
 User selects source folder
         │
         ▼
-Scan source → list of image files
+Scan source → list of media files (photos + videos)
         │
         ▼
-Detect iPhone Live Photo pairs (.HEIC + .MOV, same basename)
-  → Mark MOV for discard; keep HEIC only
+Detect iPhone Live Photo pairs (same basename):
+  .HEIC/.JPG + .MP4/.MOV → Mark video for discard; keep photo only
+  Videos without a sibling photo → treat as real video
         │
         ▼
-For each image → parallel worker threads:
+For each media file → parallel worker threads:
   ├─ EXIF worker: extract capture date (fallback chain)
-  └─ pHash worker: compute perceptual hash
+  └─ pHash worker: compute perceptual hash (photos only; skipped for videos)
         │
         ▼
-Check pHash against index.db:
-  ├─ Match found → queue for duplicate review (side-by-side UI)
+Check for duplicates against index.db:
+  ├─ Photos: pHash match → queue for duplicate review
+  ├─ Videos: filename + file_size match → queue for duplicate review
   └─ No match → continue
         │
         ▼
@@ -169,7 +172,7 @@ Destination: library_root/YYYY/YYYY.MM/filename
 Move file from temp/ to library; upsert in index.db
         │
         ▼
-Import summary: N imported, M duplicates, K Live Photo videos discarded
+Import summary: N imported (photos + videos), M duplicates, K Live Photo videos discarded
 ```
 
 ### 4.3 Import from Google Photos (Picker API)

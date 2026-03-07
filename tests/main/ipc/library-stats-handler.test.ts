@@ -24,6 +24,7 @@ function insertPhoto(
     dateTaken?: string | null
     fileSize?: number | null
     deletedAt?: string | null
+    mediaType?: string
   } = {}
 ): void {
   const path = overrides.path ?? `/lib/${Math.random()}.jpg`
@@ -31,14 +32,15 @@ function insertPhoto(
   const dateTaken = 'dateTaken' in overrides ? overrides.dateTaken : null
   const fileSize = 'fileSize' in overrides ? overrides.fileSize : 1024
   const deletedAt = overrides.deletedAt ?? null
+  const mediaType = overrides.mediaType ?? 'photo'
 
   db.db
     .prepare(
       `INSERT INTO photos
-         (path, filename, source, imported_at, created_at, date_taken, file_size, deleted_at)
-       VALUES (?, ?, 'local', '2025-01-01T00:00:00Z', '2025-01-01T00:00:00Z', ?, ?, ?)`
+         (path, filename, source, imported_at, created_at, date_taken, file_size, deleted_at, media_type)
+       VALUES (?, ?, 'local', '2025-01-01T00:00:00Z', '2025-01-01T00:00:00Z', ?, ?, ?, ?)`
     )
-    .run(path, filename, dateTaken, fileSize, deletedAt)
+    .run(path, filename, dateTaken, fileSize, deletedAt, mediaType)
 }
 
 function insertJob(
@@ -79,6 +81,7 @@ describe('handleGetLibraryStats', () => {
     const stats = handleGetLibraryStats(db)
     expect(stats).toEqual({
       totalPhotos: 0,
+      totalVideos: 0,
       totalSizeBytes: 0,
       oldestDate: null,
       newestDate: null,
@@ -182,6 +185,30 @@ describe('handleGetLibraryStats', () => {
     expect(stats.recentImports).toHaveLength(1)
     expect(stats.recentImports[0].finishedAt).toBe('2025-04-01T01:00:00Z')
     expect(stats.recentImports[0].photosImported).toBe(7)
+  })
+
+  it('counts photos and videos separately in totalPhotos and totalVideos', () => {
+    const db = makeDb()
+    insertPhoto(db, { path: '/a.jpg', dateTaken: '2025-01-01', fileSize: 100, mediaType: 'photo' })
+    insertPhoto(db, { path: '/b.jpg', dateTaken: '2025-01-02', fileSize: 200, mediaType: 'photo' })
+    insertPhoto(db, { path: '/c.mp4', dateTaken: '2025-01-03', fileSize: 5000, mediaType: 'video' })
+    const stats = handleGetLibraryStats(db)
+    expect(stats.totalPhotos).toBe(2)
+    expect(stats.totalVideos).toBe(1)
+    expect(stats.totalSizeBytes).toBe(5300)
+  })
+
+  it('excludes deleted videos from totalVideos', () => {
+    const db = makeDb()
+    insertPhoto(db, { path: '/a.mp4', mediaType: 'video', fileSize: 1000 })
+    insertPhoto(db, {
+      path: '/b.mp4',
+      mediaType: 'video',
+      fileSize: 2000,
+      deletedAt: '2025-01-01T00:00:00Z'
+    })
+    const stats = handleGetLibraryStats(db)
+    expect(stats.totalVideos).toBe(1)
   })
 
   it('mix of local and google_photos sources: both appear correctly in recentImports', () => {

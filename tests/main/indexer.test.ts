@@ -94,18 +94,22 @@ describe('scanLibraryFiles', () => {
   })
 
   it('returns an empty array for an empty library', () => {
-    expect(scanLibraryFiles(libraryRoot)).toEqual([])
+    const { files, skippedFiles } = scanLibraryFiles(libraryRoot)
+    expect(files).toEqual([])
+    expect(skippedFiles).toEqual([])
   })
 
   it('returns an empty array for a non-existent library path', () => {
-    expect(scanLibraryFiles('/nonexistent/library')).toEqual([])
+    const { files, skippedFiles } = scanLibraryFiles('/nonexistent/library')
+    expect(files).toEqual([])
+    expect(skippedFiles).toEqual([])
   })
 
   it('finds images in monthly folders', () => {
     buildLibrary(libraryRoot, {
       '2025/2025.01': ['photo1.jpg', 'photo2.jpeg']
     })
-    const files = scanLibraryFiles(libraryRoot)
+    const { files } = scanLibraryFiles(libraryRoot)
     expect(files).toContain('2025/2025.01/photo1.jpg')
     expect(files).toContain('2025/2025.01/photo2.jpeg')
   })
@@ -114,7 +118,7 @@ describe('scanLibraryFiles', () => {
     buildLibrary(libraryRoot, {
       '2025/2025.04.15-19.Londres': ['IMG_001.jpg']
     })
-    const files = scanLibraryFiles(libraryRoot)
+    const { files } = scanLibraryFiles(libraryRoot)
     expect(files).toContain('2025/2025.04.15-19.Londres/IMG_001.jpg')
   })
 
@@ -123,19 +127,32 @@ describe('scanLibraryFiles', () => {
       'ignore-me/2025.01': ['photo.jpg'],
       random: ['photo.jpg']
     })
-    const files = scanLibraryFiles(libraryRoot)
+    const { files } = scanLibraryFiles(libraryRoot)
     expect(files).toHaveLength(0)
   })
 
-  it('ignores non-image files', () => {
+  it('ignores non-media files and reports them as unrecognized', () => {
     buildLibrary(libraryRoot, {
-      '2025/2025.01': ['photo.jpg', 'document.pdf', 'notes.txt', 'video.mp4']
+      '2025/2025.01': ['photo.jpg', 'document.pdf', 'notes.txt']
     })
-    const files = scanLibraryFiles(libraryRoot)
+    const { files, skippedFiles } = scanLibraryFiles(libraryRoot)
     expect(files).toEqual(['2025/2025.01/photo.jpg'])
+    expect(skippedFiles).toHaveLength(2)
+    expect(skippedFiles[0]).toMatchObject({ reason: 'unrecognized-extension', extension: '.pdf' })
+    expect(skippedFiles[1]).toMatchObject({ reason: 'unrecognized-extension', extension: '.txt' })
   })
 
-  it('handles all supported image extensions', () => {
+  it('finds video files alongside images', () => {
+    buildLibrary(libraryRoot, {
+      '2025/2025.01': ['photo.jpg', 'video.mp4', 'clip.mov']
+    })
+    const { files } = scanLibraryFiles(libraryRoot)
+    expect(files).toHaveLength(3)
+    expect(files).toContain('2025/2025.01/video.mp4')
+    expect(files).toContain('2025/2025.01/clip.mov')
+  })
+
+  it('handles all supported media extensions (images + videos)', () => {
     const extensions = [
       'a.jpg',
       'b.jpeg',
@@ -146,16 +163,23 @@ describe('scanLibraryFiles', () => {
       'g.tif',
       'h.cr2',
       'i.nef',
-      'j.arw'
+      'j.arw',
+      'k.mp4',
+      'l.mov',
+      'm.avi',
+      'n.mts',
+      'o.3gp',
+      'p.m4v',
+      'q.mpg'
     ]
     buildLibrary(libraryRoot, { '2025/2025.01': extensions })
-    const files = scanLibraryFiles(libraryRoot)
+    const { files } = scanLibraryFiles(libraryRoot)
     expect(files).toHaveLength(extensions.length)
   })
 
   it('handles extension case-insensitively', () => {
     buildLibrary(libraryRoot, { '2025/2025.01': ['PHOTO.JPG', 'IMG.HEIC'] })
-    const files = scanLibraryFiles(libraryRoot)
+    const { files } = scanLibraryFiles(libraryRoot)
     expect(files).toHaveLength(2)
   })
 
@@ -165,7 +189,7 @@ describe('scanLibraryFiles', () => {
       '2025/2025.01': ['new1.jpg', 'new2.png'],
       '2025/2025.06.21.Mariage': ['wedding.heic']
     })
-    const files = scanLibraryFiles(libraryRoot)
+    const { files } = scanLibraryFiles(libraryRoot)
     expect(files).toHaveLength(4)
   })
 
@@ -173,7 +197,7 @@ describe('scanLibraryFiles', () => {
     mkdirSync(join(libraryRoot, '2025'), { recursive: true })
     writeFileSync(join(libraryRoot, '2025', 'stray.jpg'), 'x')
     buildLibrary(libraryRoot, { '2025/2025.01': ['photo.jpg'] })
-    const files = scanLibraryFiles(libraryRoot)
+    const { files } = scanLibraryFiles(libraryRoot)
     expect(files).toEqual(['2025/2025.01/photo.jpg'])
   })
 
@@ -183,7 +207,7 @@ describe('scanLibraryFiles', () => {
     const restricted = join(libraryRoot, '2025')
     chmodSync(restricted, 0o000)
     try {
-      const files = scanLibraryFiles(libraryRoot)
+      const { files } = scanLibraryFiles(libraryRoot)
       expect(files.every((f) => !f.startsWith('2025/'))).toBe(true)
       expect(files.some((f) => f.startsWith('2026/'))).toBe(true)
     } finally {
@@ -196,12 +220,37 @@ describe('scanLibraryFiles', () => {
     const restricted = join(libraryRoot, '2025/2025.01')
     chmodSync(restricted, 0o000)
     try {
-      const files = scanLibraryFiles(libraryRoot)
+      const { files } = scanLibraryFiles(libraryRoot)
       expect(files.every((f) => !f.includes('2025.01'))).toBe(true)
       expect(files).toContain('2025/2025.02/photo.jpg')
     } finally {
       chmodSync(restricted, 0o755)
     }
+  })
+
+  it('silently skips system and hidden files', () => {
+    buildLibrary(libraryRoot, {
+      '2025/2025.01': ['photo.jpg', '.DS_Store', 'Thumbs.db', '.hidden']
+    })
+    const { files, skippedFiles } = scanLibraryFiles(libraryRoot)
+    expect(files).toEqual(['2025/2025.01/photo.jpg'])
+    expect(skippedFiles).toHaveLength(0)
+  })
+
+  it('ignores sub-directories inside month folders', () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['photo.jpg'] })
+    mkdirSync(join(libraryRoot, '2025/2025.01/subdir'))
+    const { files } = scanLibraryFiles(libraryRoot)
+    expect(files).toEqual(['2025/2025.01/photo.jpg'])
+  })
+
+  it('reports file with no extension as unrecognized', () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['Makefile'] })
+    const { files, skippedFiles } = scanLibraryFiles(libraryRoot)
+    expect(files).toHaveLength(0)
+    expect(skippedFiles).toHaveLength(1)
+    expect(skippedFiles[0].reason).toBe('unrecognized-extension')
+    expect(skippedFiles[0].extension).toBeUndefined()
   })
 })
 
@@ -230,7 +279,7 @@ describe('runIndexer', () => {
 
   it('returns zeroes for an empty library', async () => {
     const result = await runIndexer(libraryRoot, db, () => {}, opts)
-    expect(result).toEqual({ indexed: 0, skipped: 0, deleted: 0, errors: [] })
+    expect(result).toEqual({ indexed: 0, skipped: 0, deleted: 0, errors: [], skippedFiles: [] })
   })
 
   it('uses default ExifLoader and PhashComputer when options are omitted', async () => {
@@ -438,6 +487,48 @@ describe('runIndexer', () => {
       .prepare('SELECT phash FROM photos WHERE path LIKE ?')
       .get('%bad.heic') as { phash: string | null }
     expect(row.phash).toBeNull()
+  })
+
+  it('stores media_type as photo for image files and video for video files', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['photo.jpg', 'clip.mp4'] })
+    await runIndexer(libraryRoot, db, () => {}, opts)
+
+    const photoRow = db.db
+      .prepare('SELECT media_type FROM photos WHERE path = ?')
+      .get('2025/2025.01/photo.jpg') as { media_type: string }
+    expect(photoRow.media_type).toBe('photo')
+
+    const videoRow = db.db
+      .prepare('SELECT media_type FROM photos WHERE path = ?')
+      .get('2025/2025.01/clip.mp4') as { media_type: string }
+    expect(videoRow.media_type).toBe('video')
+  })
+
+  it('skips pHash computation for video files', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['clip.mp4'] })
+    let phashCalled = false
+    const videoPhashComputer: PhashComputer = async () => {
+      phashCalled = true
+      return { phash: 'should-not-be-used', width: 100, height: 100 }
+    }
+    await runIndexer(libraryRoot, db, () => {}, {
+      loadExif: nullExifLoader,
+      computePhash: videoPhashComputer
+    })
+
+    expect(phashCalled).toBe(false)
+    const row = db.db
+      .prepare('SELECT phash, width, height, media_type FROM photos WHERE path = ?')
+      .get('2025/2025.01/clip.mp4') as {
+      phash: string | null
+      width: number | null
+      height: number | null
+      media_type: string
+    }
+    expect(row.phash).toBeNull()
+    expect(row.width).toBeNull()
+    expect(row.height).toBeNull()
+    expect(row.media_type).toBe('video')
   })
 
   it('reports non-Error pHash failures as strings', async () => {
