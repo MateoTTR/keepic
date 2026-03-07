@@ -28,7 +28,8 @@ mkdir -p "$SOURCE_DIR" "$DEPS_DIR/lib" "$DEPS_DIR/include"
 MSVC_RUNTIME_FLAG=""
 MSVC_STATIC_DEFINES=""
 if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || command -v cl.exe &>/dev/null; then
-  MSVC_RUNTIME_FLAG="-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
+  # CMP0091=NEW required for CMAKE_MSVC_RUNTIME_LIBRARY to take effect
+  MSVC_RUNTIME_FLAG="-DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
   # Tell libheif that libde265 is statically linked (avoid __declspec(dllimport))
   # de265.h checks LIBDE265_STATIC_BUILD to skip dllimport on MSVC
   MSVC_STATIC_DEFINES="-DCMAKE_C_FLAGS=-DLIBDE265_STATIC_BUILD -DCMAKE_CXX_FLAGS=-DLIBDE265_STATIC_BUILD"
