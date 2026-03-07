@@ -210,6 +210,19 @@
 
 ---
 
+## Phase 15 — Import/Scan Transparency (FEAT-003)
+
+> Report skipped and unrecognized files during import and library scan so the user
+> knows exactly what KeePic ignored and why. Covers Live Photo companions, unsupported
+> formats, and any other non-imported files.
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| FEAT-003a | Backend: collect skipped/ignored file lists during import scan and library indexer (Live Photo videos, unrecognized extensions) and include them in results | P2 | `[ ]` | — |
+| FEAT-003b | Frontend: display skipped/ignored files in import report and re-index report (collapsible sections by category) | P2 | `[ ]` | — |
+
+---
+
 ## Upcoming / Not Yet Planned
 
 - In-app browse/viewer (deferred)
