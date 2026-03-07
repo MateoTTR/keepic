@@ -70,7 +70,7 @@ describe('cleanupStaleTempDirs', () => {
       stat: vi.fn().mockResolvedValue({ mtimeMs: NOW - ONE_DAY - 1 })
     })
 
-    const result = await cleanupStaleTempDirs('/userData', ONE_DAY, deps)
+    await cleanupStaleTempDirs('/userData', ONE_DAY, deps)
 
     expect(deps.rm).toHaveBeenCalledTimes(1)
     expect(deps.rm).toHaveBeenCalledWith('/userData/temp/import-old')
