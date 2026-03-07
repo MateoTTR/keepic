@@ -186,8 +186,8 @@
 
 | # | Title | Priority | Status | Session |
 |---|---|---|---|---|
-| FEAT-001a | Thumbnail protocol + shell IPC (backend: `thumbnail.ts`, `protocol.ts`, `shell-handlers.ts`) | P2 | `[~]` | — |
-| FEAT-001b | Thumbnail UI components + screen updates (frontend: `PhotoThumbnail.svelte`, ReviewScreen, DeduplicationScreen) | P2 | `[ ]` | — |
+| FEAT-001a | Thumbnail protocol + shell IPC (backend: `thumbnail.ts`, `protocol.ts`, `shell-handlers.ts`) | P2 | `[x]` | 2026-03-07-session-039 |
+| FEAT-001b | Thumbnail UI components + screen updates (frontend: `PhotoThumbnail.svelte`, ReviewScreen, DeduplicationScreen) | P2 | `[x]` | 2026-03-07-session-039 |
 
 ---
 
