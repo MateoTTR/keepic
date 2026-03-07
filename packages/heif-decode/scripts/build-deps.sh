@@ -30,7 +30,8 @@ MSVC_STATIC_DEFINES=""
 if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || command -v cl.exe &>/dev/null; then
   MSVC_RUNTIME_FLAG="-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
   # Tell libheif that libde265 is statically linked (avoid __declspec(dllimport))
-  MSVC_STATIC_DEFINES="-DCMAKE_C_FLAGS=-DDE265_STATIC_DEFINE -DCMAKE_CXX_FLAGS=-DDE265_STATIC_DEFINE"
+  # de265.h checks LIBDE265_STATIC_BUILD to skip dllimport on MSVC
+  MSVC_STATIC_DEFINES="-DCMAKE_C_FLAGS=-DLIBDE265_STATIC_BUILD -DCMAKE_CXX_FLAGS=-DLIBDE265_STATIC_BUILD"
 fi
 
 # ---------------------------------------------------------------------------
