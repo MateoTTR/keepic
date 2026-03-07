@@ -121,22 +121,41 @@
 
 ---
 
-## Upcoming / Not Yet Planned
-
-- In-app browse/viewer (Phase 8 — deferred)
-- Event folder creation UI
-- Settings screen (currently embedded in first-launch flow)
-
----
-
 ## Phase 9 — Performance (v0.3.x)
 
-> **Dependency**: PERF-001 must be implemented after TASK-039 (heic-decode-based HEIC).
-> heic-decode (WASM) + sharp (native) both release the V8 lock, enabling true parallelism via `Promise.all`.
+> PERF-001 introduced `withConcurrency` (async semaphore in a single Worker thread).
+> Effective for I/O-bound and native (sharp) work, but WASM (heic-decode) blocks the
+> V8 event loop, so HEIC decodes are effectively sequential. See Phase 11 for true parallelism.
 
 | ID | Title | Priority | Status | Session |
 |---|---|---|---|---|
 | [PERF-001](PERF-001-concurrent-processing.md) | Concurrent processing — parallelize indexer, planner, executor (N workers = `os.cpus().length`) | P3 | `[x]` | 2026-03-05-session-034 |
+
+---
+
+## Phase 10 — Bug fixes & UX improvements (v0.2.3)
+
+> Bugs and UX issues found during manual testing of v0.2.2 (2026-03-07).
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| [TASK-041](TASK-041-fix-progress-phase1.md) | Fix missing progress during Phase 1 — UI stuck on "Starting..." (indexer, planner, executor) | P0 | `[x]` | 2026-03-07-session-036 |
+| [TASK-042](TASK-042-fix-picker-heic-jpeg.md) | Fix Google Picker HEIC files served as JPEG — detect magic bytes, rename extension | P0 | `[x]` | 2026-03-07-session-036 |
+| [TASK-043](TASK-043-elapsed-time-reports.md) | Display elapsed time in operation reports (re-index, analysis, import) | P3 | `[x]` | 2026-03-07-session-037 |
+| [TASK-044](TASK-044-heic-settings-ui.md) | Add HEIC keep/convert option to settings UI | P3 | `[x]` | 2026-03-07-session-037 |
+
+---
+
+## Phase 11 — Performance v2 (v0.3.x)
+
+> True parallelism for HEIC decoding and Google Picker downloads.
+> PERF-001's `withConcurrency` runs N async workers in a single thread — effective for I/O-bound work
+> but WASM (heic-decode) blocks the V8 event loop, serializing HEIC decodes.
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| PERF-002 | True HEIC parallel decoding — spawn N Worker threads each running heic-decode independently | P2 | `[ ]` | — |
+| PERF-003 | Concurrent Google Picker downloads — apply withConcurrency to HTTP fetches (I/O-bound) | P3 | `[ ]` | — |
 
 ---
 
@@ -146,4 +165,12 @@
 |---|---|---|---|
 | [REFACTOR-001](REFACTOR-001-heic-phash-simplification.md) | Simplify HEIC pHash workflow — superseded by TASK-037 | Refactor | `[x]` |
 | TASK-040 | Native C addon (libheif) for faster HEIC decode — optional optimization | Performance | P4 |
-| FEAT-001 | Side-by-side duplicate comparison viewer with metadata and "Reveal in Explorer/Finder" | Feature | P4 |
+| FEAT-001 | Side-by-side duplicate comparison viewer with thumbnails + "Reveal in Explorer/Finder" | Feature | P4 |
+
+---
+
+## Upcoming / Not Yet Planned
+
+- In-app browse/viewer (deferred)
+- Event folder creation UI
+- Settings screen (currently embedded in first-launch flow)

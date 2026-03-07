@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import Button from '../components/ui/Button.svelte'
+  import { formatElapsed } from '../utils'
 
   interface Props {
     onBack: () => void
@@ -14,16 +15,21 @@
   let progress: { processed: number; total: number } | null = $state(null)
   let result: { indexed: number; skipped: number; deleted: number } | null = $state(null)
   let errorMessage: string | null = $state(null)
+  let startTime: number = $state(0)
+  let elapsedMs: number = $state(0)
 
   const done = $derived(status === 'done' || status === 'error' || status === 'alreadyRunning')
 
   onMount(async () => {
+    startTime = Date.now()
+
     window.keepic.library.onIndexProgress((p) => {
       status = 'running'
       progress = { processed: p.processed, total: p.total }
     })
 
     window.keepic.library.onIndexComplete((r) => {
+      elapsedMs = Date.now() - startTime
       if (r.type === 'complete') {
         result = {
           indexed: r.indexed ?? 0,
@@ -66,7 +72,7 @@
       </p>
     {:else if status === 'done' && result}
       <p class="text-gray-700">
-        ✓ Done — {result.indexed} indexed, {result.skipped} unchanged, {result.deleted} removed
+        ✓ Done in {formatElapsed(elapsedMs)} — {result.indexed} indexed, {result.skipped} unchanged, {result.deleted} removed
       </p>
     {:else if status === 'alreadyRunning'}
       <p class="text-gray-500">A re-index is already in progress.</p>

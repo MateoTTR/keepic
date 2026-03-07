@@ -118,7 +118,8 @@ Before placing a photo in the library, the app verifies:
 5. The downloaded folder is handed off to the local import pipeline: plan → deduplication review → execute → library write
 
 **Download details**:
-- Photos are downloaded at original quality (using `baseUrl=d` parameter)
+- Photos are downloaded using `baseUrl=d` parameter (best available quality)
+- **HEIC format limitation**: the Picker API converts HEIC files to JPEG server-side while preserving the original `.HEIC` filename. KeePic detects this by inspecting the file's magic bytes after download and renames `.HEIC` → `.jpg` when the content is actually JPEG. There is no API parameter to force the original HEIC format.
 - Filename collisions in the staging folder are resolved with `_N` suffixes
 - The access token is refreshed automatically during long downloads
 - Individual file errors are recorded but do not abort the overall download

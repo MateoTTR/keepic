@@ -208,7 +208,11 @@ export async function runIndexer(
   const relativePaths = scanLibraryFiles(libraryPath)
   const total = relativePaths.length
 
+  // Initial progress: signal scan complete, Phase 1 starting
+  onProgress({ total, processed: 0, indexed: 0, skipped: 0 })
+
   // Phase 1: parallel — stat, mtime check (DB read), pHash, EXIF
+  let phase1Processed = 0
   const phase1Results = await withConcurrency(
     relativePaths,
     concurrency,
@@ -219,6 +223,8 @@ export async function runIndexer(
 
       const storedMtime = getStoredMtime(db, relativePath)
       if (storedMtime === fileMtime) {
+        phase1Processed++
+        onProgress({ total, processed: phase1Processed, indexed: 0, skipped: 0 })
         return { relativePath, skipped: true }
       }
 
@@ -234,6 +240,9 @@ export async function runIndexer(
       }
 
       const exifResult = await readExifDate(relativePath, stat.mtime, loadExif)
+
+      phase1Processed++
+      onProgress({ total, processed: phase1Processed, indexed: 0, skipped: 0 })
 
       return {
         relativePath,
