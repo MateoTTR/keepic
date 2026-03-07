@@ -60,6 +60,11 @@ jobs:
         working-directory: packages/heif-decode
         run: npx node-gyp rebuild --heif_static=true
 
+      # Smoke test: decode a real HEIC file
+      - name: Smoke test (decode HEIC)
+        working-directory: packages/heif-decode
+        run: node test/smoke-test.js
+
       # Create prebuild directory structure
       - name: Package prebuild
         shell: bash

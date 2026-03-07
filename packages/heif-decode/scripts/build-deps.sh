@@ -24,6 +24,12 @@ SOURCE_DIR="${1:-$DEPS_DIR/src}"
 
 mkdir -p "$SOURCE_DIR" "$DEPS_DIR/lib" "$DEPS_DIR/include"
 
+# On Windows (MSVC), node-gyp uses /MT (static CRT). Match it in CMake builds.
+MSVC_RUNTIME_FLAG=""
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || command -v cl.exe &>/dev/null; then
+  MSVC_RUNTIME_FLAG="-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
+fi
+
 # ---------------------------------------------------------------------------
 # Download sources if not present
 # ---------------------------------------------------------------------------
@@ -54,6 +60,7 @@ cmake -S "$DE265_SRC" -B "$DE265_BUILD" \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+  $MSVC_RUNTIME_FLAG \
   -DBUILD_SHARED_LIBS=OFF \
   -DENABLE_ENCODER=OFF \
   -DENABLE_DECODER=ON \
@@ -74,6 +81,7 @@ cmake -S "$HEIF_SRC" -B "$HEIF_BUILD" \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+  $MSVC_RUNTIME_FLAG \
   -DBUILD_SHARED_LIBS=OFF \
   -DWITH_EXAMPLES=OFF \
   -DWITH_GDK_PIXBUF=OFF \
