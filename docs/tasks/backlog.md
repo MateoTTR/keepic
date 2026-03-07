@@ -203,10 +203,10 @@
 
 | # | Title | Priority | Status | Session |
 |---|---|---|---|---|
-| TASK-V01 | DB migration (`media_type` column) + shared media type helpers + extend extension sets | P1 | `[~]` | — |
-| TASK-V02 | Live Photo detection: extend to `.MP4` companions (not just `.MOV`), check `.JPG/.JPEG` siblings | P1 | `[ ]` | — |
-| TASK-V03 | Video-aware import pipeline: skip pHash for videos, filename+size dedup | P1 | `[ ]` | — |
-| TASK-V04 | Video-aware indexer + dedup scan + stats + video thumbnail placeholder | P1 | `[ ]` | — |
+| TASK-V01 | DB migration (`media_type` column) + shared media type helpers + extend extension sets | P1 | `[x]` | 2026-03-07-session-041 |
+| TASK-V02 | Live Photo detection: extend to `.MP4` companions (not just `.MOV`), check `.JPG/.JPEG` siblings | P1 | `[x]` | 2026-03-07-session-041 |
+| TASK-V03 | Video-aware import pipeline: skip pHash for videos, filename+size dedup | P1 | `[x]` | 2026-03-07-session-041 |
+| TASK-V04 | Video-aware indexer + dedup scan + stats + video thumbnail placeholder | P1 | `[x]` | 2026-03-07-session-041 |
 
 ---
 
