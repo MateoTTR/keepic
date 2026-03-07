@@ -218,8 +218,8 @@
 
 | # | Title | Priority | Status | Session |
 |---|---|---|---|---|
-| FEAT-003a | Backend: collect skipped/ignored file lists during import scan and library indexer (Live Photo videos, unrecognized extensions) and include them in results | P2 | `[ ]` | — |
-| FEAT-003b | Frontend: display skipped/ignored files in import report and re-index report (collapsible sections by category) | P2 | `[ ]` | — |
+| FEAT-003a | Backend: collect skipped/ignored file lists during import scan and library indexer (Live Photo videos, unrecognized extensions) and include them in results | P2 | `[x]` | 2026-03-07-session-042 |
+| FEAT-003b | Frontend: display skipped/ignored files in import report and re-index report (collapsible sections by category) | P2 | `[x]` | 2026-03-07-session-042 |
 
 ---
 

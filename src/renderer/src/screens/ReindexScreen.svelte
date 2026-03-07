@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import type { SkippedFile } from '../../../shared/types'
   import Button from '../components/ui/Button.svelte'
   import { formatElapsed } from '../utils'
 
@@ -14,11 +15,15 @@
   let status: Status = $state('starting')
   let progress: { processed: number; total: number } | null = $state(null)
   let result: { indexed: number; skipped: number; deleted: number } | null = $state(null)
+  let skippedFiles: SkippedFile[] = $state([])
   let errorMessage: string | null = $state(null)
   let startTime: number = $state(0)
   let elapsedMs: number = $state(0)
 
   const done = $derived(status === 'done' || status === 'error' || status === 'alreadyRunning')
+
+  const unrecognizedSkipped = $derived(skippedFiles.filter((f) => f.reason === 'unrecognized-extension'))
+  const errorSkipped = $derived(skippedFiles.filter((f) => f.reason === 'error'))
 
   onMount(async () => {
     startTime = Date.now()
@@ -36,6 +41,7 @@
           skipped: r.skipped ?? 0,
           deleted: r.deleted ?? 0
         }
+        skippedFiles = r.skippedFiles ?? []
         status = 'done'
       } else {
         errorMessage = r.message ?? 'Unknown error'
@@ -74,6 +80,36 @@
       <p class="text-gray-700">
         ✓ Done in {formatElapsed(elapsedMs)} — {result.indexed} indexed, {result.skipped} unchanged, {result.deleted} removed
       </p>
+
+      {#if skippedFiles.length > 0}
+        <details class="mt-2">
+          <summary class="text-sm font-medium text-gray-600 cursor-pointer select-none">
+            Skipped files ({skippedFiles.length})
+          </summary>
+          <div class="mt-2 space-y-3 text-xs">
+            {#if unrecognizedSkipped.length > 0}
+              <div>
+                <p class="font-medium text-gray-500 mb-1">Unrecognized extensions ({unrecognizedSkipped.length})</p>
+                <ul class="space-y-0.5 text-gray-500">
+                  {#each unrecognizedSkipped as f, i (i)}
+                    <li class="font-mono">• {f.path}{#if f.extension} <span class="text-gray-400">({f.extension})</span>{/if}</li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
+            {#if errorSkipped.length > 0}
+              <div>
+                <p class="font-medium text-red-500 mb-1">Errors ({errorSkipped.length})</p>
+                <ul class="space-y-0.5 text-red-400">
+                  {#each errorSkipped as f, i (i)}
+                    <li class="font-mono">• {f.path}</li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
+          </div>
+        </details>
+      {/if}
     {:else if status === 'alreadyRunning'}
       <p class="text-gray-500">A re-index is already in progress.</p>
     {:else if status === 'error'}

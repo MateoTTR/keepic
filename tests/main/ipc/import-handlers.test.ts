@@ -45,7 +45,8 @@ function makeWorkerFactory(messages: object[]): WorkerFactory {
 const samplePlan: ImportPlan = {
   entries: [],
   livePhotosDiscarded: 0,
-  sourceFolder: '/source'
+  sourceFolder: '/source',
+  skippedFiles: []
 }
 
 // ---------------------------------------------------------------------------

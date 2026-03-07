@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ImportResult } from '../../../shared/types'
+  import type { ImportResult, SkippedFile } from '../../../shared/types'
   import Button from '../components/ui/Button.svelte'
   import Separator from '../components/ui/Separator.svelte'
   import { formatElapsed } from '../utils'
@@ -26,6 +26,15 @@
     if (result.status === 'cancelled') return 'text-amber-700'
     return 'text-red-700'
   })
+
+  const skippedFiles = $derived(result?.skippedFiles ?? [])
+  const livePhotoSkipped = $derived(skippedFiles.filter((f: SkippedFile) => f.reason === 'live-photo'))
+  const unrecognizedSkipped = $derived(skippedFiles.filter((f: SkippedFile) => f.reason === 'unrecognized-extension'))
+  const errorSkipped = $derived(skippedFiles.filter((f: SkippedFile) => f.reason === 'error'))
+
+  function displayPath(fullPath: string): string {
+    return fullPath.split(/[/\\]/).slice(-2).join('/')
+  }
 </script>
 
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-8 space-y-6">
@@ -57,6 +66,49 @@
             </li>
           {/each}
         </ul>
+      </div>
+    {/if}
+
+    {#if skippedFiles.length > 0}
+      <div class="space-y-2">
+        <Separator />
+        <details>
+          <summary class="text-sm font-medium text-gray-600 cursor-pointer select-none">
+            Skipped files ({skippedFiles.length})
+          </summary>
+          <div class="mt-2 space-y-3 text-xs">
+            {#if livePhotoSkipped.length > 0}
+              <div>
+                <p class="font-medium text-gray-500 mb-1">Live Photo videos ({livePhotoSkipped.length})</p>
+                <ul class="space-y-0.5 text-gray-500">
+                  {#each livePhotoSkipped as f, i (i)}
+                    <li class="font-mono">• {displayPath(f.path)}</li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
+            {#if unrecognizedSkipped.length > 0}
+              <div>
+                <p class="font-medium text-gray-500 mb-1">Unrecognized extensions ({unrecognizedSkipped.length})</p>
+                <ul class="space-y-0.5 text-gray-500">
+                  {#each unrecognizedSkipped as f, i (i)}
+                    <li class="font-mono">• {displayPath(f.path)}{#if f.extension} <span class="text-gray-400">({f.extension})</span>{/if}</li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
+            {#if errorSkipped.length > 0}
+              <div>
+                <p class="font-medium text-red-500 mb-1">Errors ({errorSkipped.length})</p>
+                <ul class="space-y-0.5 text-red-400">
+                  {#each errorSkipped as f, i (i)}
+                    <li class="font-mono">• {displayPath(f.path)}</li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
+          </div>
+        </details>
       </div>
     {/if}
   {/if}

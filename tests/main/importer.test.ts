@@ -103,12 +103,14 @@ describe('scanSourceFiles', () => {
     const result = scanSourceFiles(sourceDir)
     expect(result.candidates).toEqual([])
     expect(result.livePhotoVideos).toEqual([])
+    expect(result.skippedFiles).toEqual([])
   })
 
   it('returns empty arrays for a non-existent folder', () => {
     const result = scanSourceFiles(join(sourceDir, 'ghost'))
     expect(result.candidates).toEqual([])
     expect(result.livePhotoVideos).toEqual([])
+    expect(result.skippedFiles).toEqual([])
   })
 
   it('picks up supported image and video files in nested subfolders', () => {
@@ -195,6 +197,46 @@ describe('scanSourceFiles', () => {
     touch(join(sourceDir, 'IMG.HEIC'))
     const { candidates } = scanSourceFiles(sourceDir)
     expect(candidates).toHaveLength(2)
+  })
+
+  it('reports unrecognized extensions in skippedFiles', () => {
+    touch(join(sourceDir, 'photo.jpg'))
+    touch(join(sourceDir, 'readme.txt'))
+    touch(join(sourceDir, 'data.csv'))
+    const { candidates, skippedFiles } = scanSourceFiles(sourceDir)
+    expect(candidates).toHaveLength(1)
+    expect(skippedFiles).toHaveLength(2)
+    const extensions = skippedFiles.map((f) => f.extension).sort()
+    expect(extensions).toEqual(['.csv', '.txt'])
+    expect(skippedFiles.every((f) => f.reason === 'unrecognized-extension')).toBe(true)
+  })
+
+  it('reports unrecognized file with no extension', () => {
+    touch(join(sourceDir, 'Makefile'))
+    const { skippedFiles } = scanSourceFiles(sourceDir)
+    expect(skippedFiles).toHaveLength(1)
+    expect(skippedFiles[0].reason).toBe('unrecognized-extension')
+    expect(skippedFiles[0].extension).toBeUndefined()
+  })
+
+  it('reports Live Photo videos in skippedFiles', () => {
+    touch(join(sourceDir, 'IMG_1234.heic'))
+    touch(join(sourceDir, 'IMG_1234.MOV'))
+    const { skippedFiles } = scanSourceFiles(sourceDir)
+    const liveSkipped = skippedFiles.filter((f) => f.reason === 'live-photo')
+    expect(liveSkipped).toHaveLength(1)
+    expect(liveSkipped[0].path).toContain('IMG_1234.MOV')
+  })
+
+  it('silently skips system and hidden files', () => {
+    touch(join(sourceDir, 'photo.jpg'))
+    touch(join(sourceDir, '.DS_Store'))
+    touch(join(sourceDir, 'Thumbs.db'))
+    touch(join(sourceDir, '.hidden'))
+    touch(join(sourceDir, 'desktop.ini'))
+    const { candidates, skippedFiles } = scanSourceFiles(sourceDir)
+    expect(candidates).toHaveLength(1)
+    expect(skippedFiles).toHaveLength(0)
   })
 })
 
@@ -615,7 +657,7 @@ describe('executeImportPlan', () => {
   })
 
   function makePlan(entries: ImportPlan['entries']): ImportPlan {
-    return { entries, livePhotosDiscarded: 0, sourceFolder: '/source' }
+    return { entries, livePhotosDiscarded: 0, sourceFolder: '/source', skippedFiles: [] }
   }
 
   function readyEntry(overrides: Partial<ImportPlan['entries'][0]> = {}): ImportPlan['entries'][0] {
@@ -964,7 +1006,7 @@ describe('executeImportPlan', () => {
   })
 
   it('propagates livePhotosDiscarded from the plan', async () => {
-    const plan: ImportPlan = { entries: [], livePhotosDiscarded: 3, sourceFolder: '/source' }
+    const plan: ImportPlan = { entries: [], livePhotosDiscarded: 3, sourceFolder: '/source', skippedFiles: [] }
     const result = await executeImportPlan(plan, libraryDir, tempDir, db, baseConfig, noop, {
       rmTempDir: noop
     })
@@ -998,7 +1040,8 @@ describe('executeImportPlan', () => {
         }
       ],
       livePhotosDiscarded: 0,
-      sourceFolder: srcDir
+      sourceFolder: srcDir,
+      skippedFiles: []
     }
 
     // No options injected — exercises all default implementations
