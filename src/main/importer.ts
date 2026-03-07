@@ -694,7 +694,7 @@ export async function executeImportPlan(
   })
 
   // Build skippedFiles: start with planner-collected skipped files, add execution errors
-  const allSkippedFiles: SkippedFile[] = [...(plan.skippedFiles ?? [])]
+  const allSkippedFiles: SkippedFile[] = [...plan.skippedFiles]
   for (const err of errors) {
     allSkippedFiles.push({ path: err.sourcePath, reason: 'error' })
   }
