@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import type { AppConfig, GoogleAuthStatus, GoogleDownloadResult, ImportPlanEntry, ImportProgress, ImportResult, PlanProgress } from '../../shared/types'
+  import type { AppConfig, GoogleAuthStatus, GoogleDownloadResult, ImportPlanEntry, ImportProgress, ImportResult, PlanProgress, SkippedFile } from '../../shared/types'
   import HomeScreen from './screens/HomeScreen.svelte'
   import GoogleDownloadScreen from './screens/GoogleDownloadScreen.svelte'
   import PlanningScreen from './screens/PlanningScreen.svelte'
@@ -19,6 +19,7 @@
   let planProgress: PlanProgress | null = $state(null)
   let plan: ImportPlanEntry[] = $state([])
   let livePhotosDiscarded: number = $state(0)
+  let skippedFiles: SkippedFile[] = $state([])
   let execProgress: ImportProgress | null = $state(null)
   let importResult: ImportResult | null = $state(null)
   let googleAuthStatus: GoogleAuthStatus | null = $state(null)
@@ -58,10 +59,11 @@
     planProgress = p
   }
 
-  function handlePlanSuccess(result: { entries: ImportPlanEntry[]; livePhotosDiscarded: number }): void {
+  function handlePlanSuccess(result: { entries: ImportPlanEntry[]; livePhotosDiscarded: number; skippedFiles: SkippedFile[] }): void {
     analysisElapsedMs = Date.now() - planStartTime
     plan = result.entries
     livePhotosDiscarded = result.livePhotosDiscarded
+    skippedFiles = result.skippedFiles
     currentScreen = 'review'
   }
 
@@ -95,6 +97,7 @@
     planProgress = null
     plan = []
     livePhotosDiscarded = 0
+    skippedFiles = []
     execProgress = null
     importResult = null
     currentScreen = 'home'
@@ -160,7 +163,7 @@
       />
     {:else if currentScreen === 'executing'}
       <ExecutionScreen
-        plan={{ entries: plan, livePhotosDiscarded, sourceFolder }}
+        plan={{ entries: plan, livePhotosDiscarded, sourceFolder, skippedFiles }}
         onProgress={handleExecProgress}
         onComplete={handleExecComplete}
       />

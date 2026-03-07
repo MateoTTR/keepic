@@ -43,7 +43,7 @@ Before starting any implementation work in a session:
 3. Read the relevant ADRs if the task involves an architectural decision
 4. Read [docs/specs/specifications.md](docs/specs/specifications.md) if the task involves a feature
 5. Check the latest session report in [docs/sessions/](docs/sessions/) for context carried over from the previous session
-6. **Before writing any code**: create or update the `docs/tasks/TASK-NNN-*.md` file for the task — define the goal, deliverables, key design decisions, and IPC channels (if any). If the file already exists, read it first.
+6. **MANDATORY — Before writing any code**: create or update the `docs/tasks/TASK-NNN-*.md` (or `FEAT-NNN-*.md`, `PERF-NNN-*.md`) file for the task. Every task in the backlog **must** have a corresponding detailed markdown file in `docs/tasks/`. Define the goal, deliverables, key design decisions, IPC channels (if any), and files changed. If the file already exists, read it first. **Never skip this step** — even for small bug fixes.
 7. At the end of the session, create a session report and update the backlog (mark task `[x]` and fill in the session column)
 
 ---
@@ -61,7 +61,11 @@ Before starting any implementation work in a session:
 
 ### File Naming
 - ADRs: `ADR-NNN-short-title.md` (zero-padded 3-digit number)
-- Tasks: `TASK-NNN-short-title.md` (zero-padded 3-digit number)
+- Tasks: `TASK-NNN-<type>-short-title.md` (zero-padded 3-digit number)
+  - `type` prefix after the number indicates the nature of the work: `feat`, `fix`, `perf`, `refactor`, `doc`
+  - Examples: `TASK-046-feat-scan-transparency.md`, `TASK-047-perf-heic-native-decode.md`, `TASK-048-fix-skipped-files-propagation.md`
+  - All tasks use a single `TASK-NNN` sequence (no separate FEAT/PERF/REFACTOR counters) to preserve chronological ordering
+  - **Legacy exception**: tasks before TASK-046 may use older prefixes (`FEAT-`, `PERF-`, `REFACTOR-`) — do not rename them
 - Sessions: `YYYY-MM-DD-session-NNN.md`
 
 ### Git — Git Flow
@@ -72,12 +76,12 @@ The project follows the **Git Flow** branching model:
 |---|---|
 | `main` | Production-ready code only. Never commit directly. |
 | `develop` | Integration branch. All features merge here first. |
-| `feature/TASK-NNN-short-desc` | One branch per task, branched from `develop` |
+| `feature/TASK-NNN-<type>-short-desc` | One branch per task, branched from `develop` |
 | `release/vX.Y.Z` | Release preparation, branched from `develop` |
 | `hotfix/short-desc` | Critical fixes on `main`, merged back to `main` + `develop` |
 
 **Workflow for a task**:
-1. Branch from `develop`: `git checkout -b feature/TASK-NNN-short-desc develop`
+1. Branch from `develop`: `git checkout -b feature/TASK-NNN-<type>-short-desc develop`
 2. Implement + write tests
 3. Once tests pass and coverage is at 100%, **open a Pull Request targeting `develop`** directly — no need to wait for explicit instruction
 4. The user reviews and merges the PR themselves; they will inform Claude once merged
@@ -130,8 +134,8 @@ New imports are always placed in the **monthly folder** for the photo's capture 
 
 ## Open Questions / Decisions Pending
 
-- [ ] UI framework: React vs Svelte (decide during TASK-003)
-- [ ] HEIC conversion: user-configurable JPEG quality or fixed?
+- [x] UI framework: React vs Svelte — **Closed**: Svelte 5 + Tailwind CSS + shadcn-svelte (ADR-004)
+- [x] HEIC conversion: user-configurable JPEG quality or fixed? — **Closed**: configurable via `heic.jpegQuality` (default 90), mode via `heic.mode` (TASK-044)
 - [ ] Re-index trigger: on startup automatically, or manual only?
 - [x] Google Photos date filter: **N/A** — Picker API replaces date-based filtering; the user selects photos directly in Google's UI (no programmatic date filter needed).
 - [ ] If two users import the same photo: detected on re-index and reported?

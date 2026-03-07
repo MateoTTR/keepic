@@ -1,0 +1,25 @@
+{
+  "name": "@keepic/heif-decode",
+  "version": "1.0.0",
+  "description": "Native HEIF/HEIC image decoding via libheif N-API addon with static linking",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "files": [
+    "src/",
+    "binding.gyp",
+    "index.js",
+    "index.d.ts",
+    "prebuilds/"
+  ],
+  "dependencies": {
+    "node-addon-api": "^8.3.1",
+    "node-gyp-build": "^4.8.4"
+  },
+  "scripts": {
+    "install": "node-gyp-build || node-gyp rebuild",
+    "build": "node-gyp rebuild",
+    "build:static": "node-gyp rebuild --heif_static=true"
+  },
+  "gypfile": true
+}

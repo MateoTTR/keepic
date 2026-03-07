@@ -1,6 +1,6 @@
 {
   "name": "keepic",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Personal photo library manager — import, deduplicate and organize photos locally",
   "main": "./out/main/index.js",
   "author": "MateoTTR",
@@ -28,8 +28,8 @@
     "clsx": "^2.1.1",
     "electron-updater": "^6.1.7",
     "exifreader": "^4.36.2",
-    "heic-decode": "^2.1.0",
     "keytar": "^7.9.0",
+    "@keepic/heif-decode": "file:packages/heif-decode",
     "sharp": "^0.33.3",
     "tailwind-variants": "^3.2.2"
   },
@@ -65,7 +65,8 @@
     "asarUnpack": [
       "node_modules/better-sqlite3/**",
       "node_modules/keytar/**",
-      "node_modules/sharp/**"
+      "node_modules/sharp/**",
+      "node_modules/@keepic/heif-decode/**"
     ],
     "win": {
       "target": "nsis",

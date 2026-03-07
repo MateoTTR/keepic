@@ -109,7 +109,7 @@ Decodes HEIC to raw RGBA pixels, then use `sharp` for resize/conversion.
 3. **Acceptable performance**: at ~393ms/file (v2.x), indexing 8000 HEIC photos takes ~53 minutes
    sequentially. **Note**: PERF-001's `withConcurrency` runs async workers in a single thread;
    since WASM blocks the V8 event loop, HEIC decodes are effectively sequential. True
-   parallelism requires spawning N Worker threads (see PERF-002 in backlog).
+   parallelism requires spawning N Worker threads (see TASK-046-perf in backlog).
    The sequential time is acceptable for a batch operation that runs infrequently.
 
 4. **Validated compatibility**: testing on 20 real iPhone HEIC files confirmed that heic-decode's
@@ -133,7 +133,7 @@ Decodes HEIC to raw RGBA pixels, then use `sharp` for resize/conversion.
 - ~393ms per HEIC file is slower than native (~40ms for ffmpeg, ~50-100ms for C addon)
 - For very large HEIC collections (10,000+), sequential indexing may take over an hour.
   PERF-001's async concurrency does not help for WASM (blocks V8 event loop).
-  True parallelism via N Worker threads (PERF-002) would reduce this proportionally to core count.
+  True parallelism via N Worker threads (TASK-046-perf) would reduce this proportionally to core count.
 
 ### Neutral
 - All existing HEIC pHash values in the database from v0.2.1 (tile 0 based) are invalidated.
@@ -143,11 +143,44 @@ Decodes HEIC to raw RGBA pixels, then use `sharp` for resize/conversion.
 
 ---
 
+## POC-001 — Native HEIC Decoding Benchmark (2026-03-07)
+
+A dedicated PoC (`~/heic-decode-poc/`) benchmarked 5 strategies on 10 real iPhone 12MP HEIC files
+(3024x4032, HEVC tile grid). All strategies were validated for correct tile grid assembly via pHash
+comparison against the WASM baseline.
+
+### Results Summary
+
+| Strategy | Seq ms/file | N=8 total ms | Speedup vs WASM | Tile grid | Cross-platform |
+|----------|-------------|-------------|-----------------|-----------|----------------|
+| heic-decode (WASM) — current | 463 | 4662 | 1.0x | OK | Excellent |
+| **libheif N-API** (`libheif-node-dy`) | 282 | **370** | **12.6x** | OK | Medium |
+| ImageMagick CLI | 267 | 630 | 7.4x | OK | Good |
+| libvips CLI | 326 | 731 | 6.4x | OK | Weak |
+| sharp HEIF | — | — | — | Blocked | — |
+
+### Recommendation
+
+**libheif N-API with `worker_threads`** is the recommended upgrade path (TASK-046-perf):
+- 12.6x faster than WASM in parallel (370ms vs 4662ms for 10 files)
+- Same libheif engine = same decoding quality as current WASM baseline
+- True CPU parallelism via `worker_threads` (unlike WASM which blocks V8)
+- Integration plan: create `@keepic/heif-decode` addon with platform-specific prebuilds
+
+**Fallback**: ImageMagick CLI (7.4x speedup, simpler packaging but larger binary ~30-50MB).
+
+Full report: `~/heic-decode-poc/REPORT.md`
+Integration specification: `~/heic-decode-poc/docs/integration-strategy.md`
+
+---
+
 ## References
 
 - [heic-decode npm package](https://www.npmjs.com/package/heic-decode)
 - [libheif — HEIF/HEIC decoder](https://github.com/nicolo-ribaudo/libheif-js)
+- [libheif-node-dy — N-API addon](https://www.npmjs.com/package/libheif-node-dy)
 - [TASK-039 — Fix HEIC handling](../../tasks/TASK-039-fix-heic-ffmpeg-windows.md)
 - [TASK-037 — Previous ffmpeg approach (superseded)](../../tasks/TASK-037-fix-heic-double-decode.md)
 - [TASK-036 — Previous heic-decode v1.x approach](../../tasks/TASK-036-fix-heic-import-decoding.md)
 - [PERF-001 — Concurrent processing](../../tasks/PERF-001-concurrent-processing.md)
+- [POC-001 — HEIC decoding benchmark](~/heic-decode-poc/REPORT.md)

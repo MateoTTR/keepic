@@ -46,7 +46,7 @@ The app is **append-only**: it never modifies or deletes files already in the sh
 | Build toolchain | `electron-vite` | Fast HMR, modern bundling |
 | Language | TypeScript (main + renderer + workers) | Single language |
 | UI framework | Svelte 5 + Tailwind CSS + shadcn-svelte | Zero runtime overhead, minimal boilerplate (see ADR-004) |
-| Image processing | `sharp` + `heic-decode` | sharp for JPEG/PNG/TIFF; heic-decode (WASM libheif) for HEIC full-image decode (see [ADR-005](adr/ADR-005-heic-decoding-strategy.md)) |
+| Image processing | `sharp` + `heic-decode` | sharp for JPEG/PNG/TIFF; heic-decode (WASM libheif) for HEIC full-image decode (see [ADR-005](adr/ADR-005-heic-decoding-strategy.md)). POC-001 benchmarked native alternatives: libheif N-API recommended for TASK-046-perf (12.6x faster). |
 | EXIF reading | `exifreader` | Pure JS, comprehensive EXIF support |
 | Perceptual hashing | Custom DCT pHash (64-bit) | Implemented in `src/main/phash.ts` — no external dependency |
 | SQLite | `better-sqlite3` | Synchronous, fast, Node.js main process |

@@ -11,7 +11,8 @@ import type {
   ImportResult,
   LibraryStats,
   PlanProgress,
-  SelectLibraryFolderResult
+  SelectLibraryFolderResult,
+  SkippedFile
 } from '../shared/types'
 
 const keepicAPI = {
@@ -41,6 +42,7 @@ const keepicAPI = {
         indexed?: number
         skipped?: number
         deleted?: number
+        skippedFiles?: SkippedFile[]
         message?: string
       }) => void
     ) => {
