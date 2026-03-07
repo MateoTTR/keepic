@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createThumbnailGenerator } from '../../src/main/thumbnail'
+import { createThumbnailGenerator, getVideoPlaceholderBuffer } from '../../src/main/thumbnail'
 import type { HeicDecodeFn, HeicDecodeResult } from '../../src/main/heic'
 
 // ---------------------------------------------------------------------------
@@ -92,12 +92,13 @@ describe('createThumbnailGenerator', () => {
       const result = await gen(jpegPath, { maxDim: 50 })
 
       // Result should be a JPEG buffer
-      expect(result).toBeInstanceOf(Buffer)
-      expect(result[0]).toBe(0xff) // JPEG magic byte
-      expect(result[1]).toBe(0xd8)
+      expect(result.contentType).toBe('image/jpeg')
+      expect(result.buffer).toBeInstanceOf(Buffer)
+      expect(result.buffer[0]).toBe(0xff) // JPEG magic byte
+      expect(result.buffer[1]).toBe(0xd8)
 
       // Verify dimensions: 100x200 resized to fit inside 50x50 → 25x50
-      const meta = await sharp(result).metadata()
+      const meta = await sharp(result.buffer).metadata()
       expect(meta.width).toBe(25)
       expect(meta.height).toBe(50)
       expect(meta.format).toBe('jpeg')
@@ -124,7 +125,7 @@ describe('createThumbnailGenerator', () => {
       const gen = createThumbnailGenerator()
       const result = await gen(jpegPath, { maxDim: 150 })
 
-      const meta = await sharp(result).metadata()
+      const meta = await sharp(result.buffer).metadata()
       expect(meta.width).toBe(150)
       expect(meta.height).toBe(100)
 
@@ -155,12 +156,13 @@ describe('createThumbnailGenerator', () => {
 
       const result = await gen('/photos/IMG_1234.HEIC', { maxDim: 50 })
 
-      expect(result).toBeInstanceOf(Buffer)
-      expect(result[0]).toBe(0xff)
-      expect(result[1]).toBe(0xd8)
+      expect(result.contentType).toBe('image/jpeg')
+      expect(result.buffer).toBeInstanceOf(Buffer)
+      expect(result.buffer[0]).toBe(0xff)
+      expect(result.buffer[1]).toBe(0xd8)
 
       const sharp = (await import('sharp')).default
-      const meta = await sharp(result).metadata()
+      const meta = await sharp(result.buffer).metadata()
       expect(meta.width).toBe(25) // 100x200 fit inside 50x50 → 25x50
       expect(meta.height).toBe(50)
       expect(meta.format).toBe('jpeg')
@@ -175,9 +177,10 @@ describe('createThumbnailGenerator', () => {
 
       const result = await gen('/photos/IMG.heif', { maxDim: 40 })
 
-      expect(result).toBeInstanceOf(Buffer)
+      expect(result.contentType).toBe('image/jpeg')
+      expect(result.buffer).toBeInstanceOf(Buffer)
       const sharp = (await import('sharp')).default
-      const meta = await sharp(result).metadata()
+      const meta = await sharp(result.buffer).metadata()
       expect(meta.width).toBe(40)
       expect(meta.height).toBe(40)
     })
@@ -201,5 +204,63 @@ describe('createThumbnailGenerator', () => {
 
       await expect(gen('/photos/IMG.HEIC', { maxDim: 300 })).rejects.toThrow('File not found')
     })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Video files
+  // ---------------------------------------------------------------------------
+
+  describe('Video files', () => {
+    it('returns an SVG placeholder for video files', async () => {
+      const gen = createThumbnailGenerator()
+      const result = await gen('/photos/clip.mp4', { maxDim: 300 })
+
+      expect(result.contentType).toBe('image/svg+xml')
+      expect(result.buffer.toString('utf-8')).toContain('<svg')
+      expect(result.buffer.toString('utf-8')).toContain('polygon')
+    })
+
+    it('returns the same placeholder for all video extensions', async () => {
+      const gen = createThumbnailGenerator()
+      const extensions = ['.mp4', '.mov', '.avi', '.mts', '.3gp', '.m4v', '.mpg']
+
+      for (const ext of extensions) {
+        const result = await gen(`/photos/clip${ext}`, { maxDim: 300 })
+        expect(result.contentType).toBe('image/svg+xml')
+      }
+    })
+
+    it('does not call decodeFn or readFile for video files', async () => {
+      let decodeCalled = false
+      let readCalled = false
+      const gen = createThumbnailGenerator({
+        decodeFn: async () => {
+          decodeCalled = true
+          return { data: new Uint8Array(0), width: 0, height: 0 }
+        },
+        readFile: () => {
+          readCalled = true
+          return Buffer.from('')
+        }
+      })
+
+      await gen('/photos/video.MOV', { maxDim: 300 })
+      expect(decodeCalled).toBe(false)
+      expect(readCalled).toBe(false)
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getVideoPlaceholderBuffer
+// ---------------------------------------------------------------------------
+
+describe('getVideoPlaceholderBuffer', () => {
+  it('returns a valid SVG buffer', () => {
+    const buf = getVideoPlaceholderBuffer()
+    expect(buf).toBeInstanceOf(Buffer)
+    const svg = buf.toString('utf-8')
+    expect(svg).toContain('<svg')
+    expect(svg).toContain('</svg>')
   })
 })

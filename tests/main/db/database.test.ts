@@ -96,7 +96,7 @@ describe('KeePicDatabase', () => {
       const kdb = new KeePicDatabase(':memory:')
       kdb.open()
       const version = kdb.db.pragma('user_version', { simple: true })
-      expect(version).toBe(2)
+      expect(version).toBe(3)
       kdb.close()
     })
 
@@ -112,7 +112,7 @@ describe('KeePicDatabase', () => {
         const kdb2 = new KeePicDatabase(path)
         kdb2.open()
         const version = kdb2.db.pragma('user_version', { simple: true })
-        expect(version).toBe(2)
+        expect(version).toBe(3)
         kdb2.close()
       } finally {
         cleanup(path)

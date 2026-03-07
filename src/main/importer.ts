@@ -3,7 +3,8 @@ import { basename, dirname, extname, join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import {
-  isLivePhotoMov,
+  isLivePhotoVideo,
+  isLivePhotoVideoExtension,
   isHeicFile,
   createHeicConverter,
   createUniversalPhashComputer,
@@ -13,6 +14,7 @@ import { readExifDate, defaultExifLoader, type ExifLoader } from './exif'
 import { type PhashComputer, type PhashResult } from './phash'
 import { getDestinationPath } from '../shared/library-path'
 import { withConcurrency, DEFAULT_CONCURRENCY } from './concurrency'
+import { getMediaType, type MediaType } from '../shared/media-type'
 import type { KeePicDatabase } from './db/database'
 import type {
   AppConfig,
@@ -30,7 +32,7 @@ import type {
 // Constants
 // ---------------------------------------------------------------------------
 
-const IMPORT_EXTENSIONS = new Set([
+const IMPORT_MEDIA_EXTENSIONS = new Set([
   '.jpg',
   '.jpeg',
   '.heic',
@@ -40,19 +42,22 @@ const IMPORT_EXTENSIONS = new Set([
   '.tif',
   '.cr2',
   '.nef',
-  '.arw'
+  '.arw',
+  '.mp4',
+  '.mov',
+  '.avi',
+  '.mts',
+  '.3gp',
+  '.m4v',
+  '.mpg'
 ])
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function isImportable(name: string): boolean {
-  return IMPORT_EXTENSIONS.has(extname(name).toLowerCase())
-}
-
-function isMovFile(name: string): boolean {
-  return extname(name).toLowerCase() === '.mov'
+function isImportableMedia(name: string): boolean {
+  return IMPORT_MEDIA_EXTENSIONS.has(extname(name).toLowerCase())
 }
 
 /**
@@ -85,14 +90,14 @@ function resolveCollision(
 /**
  * Recursively walks a source folder and classifies files into:
  * - candidates: supported image files to import
- * - livePhotoMovs: .MOV files identified as Live Photo companions (to discard)
+ * - livePhotoVideos: .MOV/.MP4 files identified as Live Photo companions (to discard)
  */
 export function scanSourceFiles(sourceFolder: string): {
   candidates: string[]
-  livePhotoMovs: string[]
+  livePhotoVideos: string[]
 } {
   const candidates: string[] = []
-  const livePhotoMovs: string[] = []
+  const livePhotoVideos: string[] = []
 
   function walk(dir: string): void {
     let entries
@@ -106,17 +111,17 @@ export function scanSourceFiles(sourceFolder: string): {
       if (entry.isDirectory()) {
         walk(fullPath)
       } else if (entry.isFile()) {
-        if (isImportable(entry.name)) {
+        if (isLivePhotoVideoExtension(entry.name) && isLivePhotoVideo(fullPath)) {
+          livePhotoVideos.push(fullPath)
+        } else if (isImportableMedia(entry.name)) {
           candidates.push(fullPath)
-        } else if (isMovFile(entry.name) && isLivePhotoMov(fullPath)) {
-          livePhotoMovs.push(fullPath)
         }
       }
     }
   }
 
   walk(sourceFolder)
-  return { candidates, livePhotoMovs }
+  return { candidates, livePhotoVideos }
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +159,7 @@ interface PlanPhase1Result {
   fileSize: number
   destFilename: string
   isConvertHeic: boolean
+  mediaType: MediaType
   stagedPath?: string
   errorMessage?: string
 }
@@ -176,7 +182,7 @@ export async function buildImportPlan(
 
   let stagingDirCreated = false
 
-  const { candidates, livePhotoMovs } = scanSourceFiles(sourceFolder)
+  const { candidates, livePhotoVideos } = scanSourceFiles(sourceFolder)
   const total = candidates.length
 
   // Initial progress: signal scan complete, Phase 1 starting
@@ -189,14 +195,17 @@ export async function buildImportPlan(
     concurrency,
     async (srcPath): Promise<PlanPhase1Result> => {
       const stat = statSync(srcPath)
+      const mediaType = getMediaType(srcPath)
       const isHeic = isHeicFile(srcPath)
       const convertHeic = isHeic && config.heic.mode === 'convert'
 
-      let phashResult: PhashResult | null
+      let phashResult: PhashResult | null = null
       let stagedPath: string | undefined
       let errorMessage: string | undefined
 
-      if (convertHeic) {
+      if (mediaType === 'video') {
+        // Videos: skip pHash computation entirely
+      } else if (convertHeic) {
         if (!stagingDirCreated) {
           mkdirpFn(stagingDir)
           stagingDirCreated = true
@@ -240,6 +249,7 @@ export async function buildImportPlan(
         fileSize: stat.size,
         destFilename,
         isConvertHeic: convertHeic,
+        mediaType,
         stagedPath,
         errorMessage
       }
@@ -254,12 +264,26 @@ export async function buildImportPlan(
     const r = phase1Results[i]
     onProgress({ total, processed: i, currentFile: r.srcPath })
 
-    // Check for duplicate (pHash match in the existing library index)
+    // Check for duplicate in the existing library index
     let status: ImportEntryStatus = r.errorMessage ? 'error' : 'ready'
     let duplicateOf: string | undefined
     let errorMessage = r.errorMessage
 
-    if (r.phashResult?.phash) {
+    if (r.mediaType === 'video') {
+      // Video dedup: filename + file_size
+      const match = db.db
+        .prepare(
+          `SELECT path FROM photos
+           WHERE filename = ? AND file_size = ? AND media_type = 'video' AND deleted_at IS NULL
+           LIMIT 1`
+        )
+        .get(basename(r.srcPath), r.fileSize) as { path: string } | undefined
+      if (match) {
+        status = 'duplicate'
+        duplicateOf = match.path
+      }
+    } else if (r.phashResult?.phash) {
+      // Photo dedup: pHash
       const match = db.db
         .prepare('SELECT path FROM photos WHERE phash = ? AND deleted_at IS NULL LIMIT 1')
         .get(r.phashResult.phash) as { path: string } | undefined
@@ -277,8 +301,12 @@ export async function buildImportPlan(
       // Check both filesystem and already-claimed paths in this plan
       const destAbsPath = join(libraryPath, destRelPath)
       if (checkExists(destAbsPath) || seenDestPaths.has(destRelPath)) {
-        const resolved = resolveCollision(libraryPath, destRelPath, (p) =>
-          checkExists(p) || seenDestPaths.has(p.replace(libraryPath + '/', '').replace(libraryPath + '\\', ''))
+        const resolved = resolveCollision(
+          libraryPath,
+          destRelPath,
+          (p) =>
+            checkExists(p) ||
+            seenDestPaths.has(p.replace(libraryPath + '/', '').replace(libraryPath + '\\', ''))
         )
         if (resolved === null) {
           status = 'error'
@@ -308,7 +336,8 @@ export async function buildImportPlan(
       duplicateOf,
       originalDestination,
       errorMessage,
-      stagedPath: r.stagedPath
+      stagedPath: r.stagedPath,
+      mediaType: r.mediaType
     })
 
     onProgress({ total, processed: i + 1, currentFile: r.srcPath })
@@ -316,7 +345,7 @@ export async function buildImportPlan(
 
   return {
     entries,
-    livePhotosDiscarded: livePhotoMovs.length,
+    livePhotosDiscarded: livePhotoVideos.length,
     sourceFolder
   }
 }
@@ -376,6 +405,7 @@ function upsertImportedPhoto(
     height: number | null
     fileSize: number
     fileMtime: string
+    mediaType: MediaType
     now: string
   }
 ): void {
@@ -384,8 +414,8 @@ function upsertImportedPhoto(
       `INSERT INTO photos
          (path, filename, phash, date_taken, date_taken_source,
           width, height, file_size, file_mtime, source,
-          google_id, imported_at, created_at, deleted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', NULL, ?, ?, NULL)
+          google_id, imported_at, created_at, deleted_at, media_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', NULL, ?, ?, NULL, ?)
        ON CONFLICT(path) DO UPDATE SET
          phash             = excluded.phash,
          date_taken        = excluded.date_taken,
@@ -394,6 +424,7 @@ function upsertImportedPhoto(
          height            = excluded.height,
          file_size         = excluded.file_size,
          file_mtime        = excluded.file_mtime,
+         media_type        = excluded.media_type,
          deleted_at        = NULL`
     )
     .run(
@@ -407,7 +438,8 @@ function upsertImportedPhoto(
       params.fileSize,
       params.fileMtime,
       params.now,
-      params.now
+      params.now,
+      params.mediaType
     )
 }
 
@@ -500,66 +532,66 @@ export async function executeImportPlan(
   // Each worker checks isCancelled() before processing its entry
   let phase1Processed = 0
   const phase1Results = await withConcurrency(
-      entriesToProcess,
-      concurrency,
-      async (entry): Promise<ExecuteFileResult> => {
-        if (isCancelled()) {
-          return { entry, error: undefined }
+    entriesToProcess,
+    concurrency,
+    async (entry): Promise<ExecuteFileResult> => {
+      if (isCancelled()) {
+        return { entry, error: undefined }
+      }
+
+      try {
+        const isHeic = isHeicFile(entry.sourcePath)
+        const doConvert = isHeic && config.heic.mode === 'convert'
+
+        const destAbsPath = join(libraryPath, entry.destinationRelativePath)
+
+        if (entry.stagedPath) {
+          mkdirpFn(dirname(destAbsPath))
+          moveFileFn(entry.stagedPath, destAbsPath)
+        } else {
+          const tempFilename = `${randomUUID()}-${basename(entry.destinationRelativePath)}`
+          const tempPath = join(tempDir, tempFilename)
+
+          if (doConvert) {
+            await convertHeicFn(entry.sourcePath, tempPath, config.heic.jpegQuality)
+          } else {
+            copyFileFn(entry.sourcePath, tempPath)
+          }
+
+          mkdirpFn(dirname(destAbsPath))
+          moveFileFn(tempPath, destAbsPath)
         }
 
-        try {
-          const isHeic = isHeicFile(entry.sourcePath)
-          const doConvert = isHeic && config.heic.mode === 'convert'
-
-          const destAbsPath = join(libraryPath, entry.destinationRelativePath)
-
-          if (entry.stagedPath) {
-            mkdirpFn(dirname(destAbsPath))
-            moveFileFn(entry.stagedPath, destAbsPath)
-          } else {
-            const tempFilename = `${randomUUID()}-${basename(entry.destinationRelativePath)}`
-            const tempPath = join(tempDir, tempFilename)
-
-            if (doConvert) {
-              await convertHeicFn(entry.sourcePath, tempPath, config.heic.jpegQuality)
-            } else {
-              copyFileFn(entry.sourcePath, tempPath)
-            }
-
-            mkdirpFn(dirname(destAbsPath))
-            moveFileFn(tempPath, destAbsPath)
-          }
-
-          const fileStat = statFileFn(destAbsPath)
-          phase1Processed++
-          onProgress({
-            total,
-            processed: phase1Processed,
-            imported: 0,
-            skipped: duplicateCount,
-            duplicates: duplicateCount,
-            livePhotosDiscarded: plan.livePhotosDiscarded,
-            currentFile: entry.sourcePath
-          })
-          return { entry, fileStat }
-        } catch (err) {
-          phase1Processed++
-          onProgress({
-            total,
-            processed: phase1Processed,
-            imported: 0,
-            skipped: duplicateCount,
-            duplicates: duplicateCount,
-            livePhotosDiscarded: plan.livePhotosDiscarded,
-            currentFile: entry.sourcePath
-          })
-          return {
-            entry,
-            error: err instanceof Error ? err.message : String(err)
-          }
+        const fileStat = statFileFn(destAbsPath)
+        phase1Processed++
+        onProgress({
+          total,
+          processed: phase1Processed,
+          imported: 0,
+          skipped: duplicateCount,
+          duplicates: duplicateCount,
+          livePhotosDiscarded: plan.livePhotosDiscarded,
+          currentFile: entry.sourcePath
+        })
+        return { entry, fileStat }
+      } catch (err) {
+        phase1Processed++
+        onProgress({
+          total,
+          processed: phase1Processed,
+          imported: 0,
+          skipped: duplicateCount,
+          duplicates: duplicateCount,
+          livePhotosDiscarded: plan.livePhotosDiscarded,
+          currentFile: entry.sourcePath
+        })
+        return {
+          entry,
+          error: err instanceof Error ? err.message : String(err)
         }
       }
-    )
+    }
+  )
 
   // Phase 2: sequential — DB upserts + progress reporting
   for (let i = 0; i < phase1Results.length; i++) {
@@ -596,6 +628,7 @@ export async function executeImportPlan(
         height: result.entry.height,
         fileSize: result.fileStat.size,
         fileMtime: result.fileStat.mtime.toISOString(),
+        mediaType: result.entry.mediaType,
         now: importedAt
       })
       imported++

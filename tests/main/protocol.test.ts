@@ -8,7 +8,7 @@ import type { ThumbnailGenerator } from '../../src/main/thumbnail'
 
 function makeMockGenerator(returnBuffer?: Buffer): ThumbnailGenerator {
   const buf = returnBuffer ?? Buffer.from([0xff, 0xd8, 0xff, 0xe0]) // JPEG header
-  return async () => buf
+  return async () => ({ buffer: buf, contentType: 'image/jpeg' })
 }
 
 function makeMockGeneratorSpy(): {
@@ -18,7 +18,7 @@ function makeMockGeneratorSpy(): {
   const calls: Array<{ path: string; maxDim: number }> = []
   const generator: ThumbnailGenerator = async (path, opts) => {
     calls.push({ path, maxDim: opts.maxDim })
-    return Buffer.from([0xff, 0xd8, 0xff, 0xe0])
+    return { buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0]), contentType: 'image/jpeg' }
   }
   return { generator, calls }
 }
@@ -150,6 +150,20 @@ describe('createProtocolHandler', () => {
       expect(response.status).toBe(404)
       const text = await response.text()
       expect(text).toBe('File not found or unreadable')
+    })
+  })
+
+  describe('video content type', () => {
+    it('returns the content type from the thumbnail generator result', async () => {
+      const videoGen: ThumbnailGenerator = async () => ({
+        buffer: Buffer.from('<svg></svg>'),
+        contentType: 'image/svg+xml'
+      })
+      const handler = createProtocolHandler(() => null, videoGen)
+      const response = await handler(makeRequest('keepic-photo://thumbnail?path=/photos/clip.mp4'))
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('Content-Type')).toBe('image/svg+xml')
     })
   })
 

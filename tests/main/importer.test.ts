@@ -102,48 +102,68 @@ describe('scanSourceFiles', () => {
   it('returns empty arrays for an empty folder', () => {
     const result = scanSourceFiles(sourceDir)
     expect(result.candidates).toEqual([])
-    expect(result.livePhotoMovs).toEqual([])
+    expect(result.livePhotoVideos).toEqual([])
   })
 
   it('returns empty arrays for a non-existent folder', () => {
     const result = scanSourceFiles(join(sourceDir, 'ghost'))
     expect(result.candidates).toEqual([])
-    expect(result.livePhotoMovs).toEqual([])
+    expect(result.livePhotoVideos).toEqual([])
   })
 
-  it('picks up supported image files in nested subfolders', () => {
+  it('picks up supported image and video files in nested subfolders', () => {
     const sub = join(sourceDir, 'DCIM', 'Camera')
     mkdirSync(sub, { recursive: true })
     touch(join(sub, 'photo.jpg'))
     touch(join(sub, 'raw.CR2'))
-    touch(join(sub, 'video.mp4')) // unsupported — ignored
+    touch(join(sub, 'video.mp4'))
 
     const { candidates } = scanSourceFiles(sourceDir)
-    expect(candidates).toHaveLength(2)
+    expect(candidates).toHaveLength(3)
     expect(candidates.some((p) => p.endsWith('photo.jpg'))).toBe(true)
     expect(candidates.some((p) => p.endsWith('raw.CR2'))).toBe(true)
+    expect(candidates.some((p) => p.endsWith('video.mp4'))).toBe(true)
   })
 
   it('detects Live Photo MOV companions and excludes them from candidates', () => {
-    // Use lowercase .heic — isLivePhotoMov checks for lowercase on case-sensitive filesystems (Linux CI)
     touch(join(sourceDir, 'IMG_1234.heic'))
     touch(join(sourceDir, 'IMG_1234.MOV'))
 
-    const { candidates, livePhotoMovs } = scanSourceFiles(sourceDir)
+    const { candidates, livePhotoVideos } = scanSourceFiles(sourceDir)
     expect(candidates.some((p) => p.endsWith('IMG_1234.heic'))).toBe(true)
-    expect(livePhotoMovs.some((p) => p.endsWith('IMG_1234.MOV'))).toBe(true)
+    expect(livePhotoVideos.some((p) => p.endsWith('IMG_1234.MOV'))).toBe(true)
     expect(candidates.some((p) => p.endsWith('IMG_1234.MOV'))).toBe(false)
   })
 
-  it('ignores .MOV files that are not Live Photo companions', () => {
-    touch(join(sourceDir, 'video.MOV')) // no sibling HEIC
+  it('detects Live Photo MP4 companions with JPG sibling', () => {
+    touch(join(sourceDir, 'IMG_5678.jpg'))
+    touch(join(sourceDir, 'IMG_5678.mp4'))
 
-    const { candidates, livePhotoMovs } = scanSourceFiles(sourceDir)
-    expect(candidates).toHaveLength(0)
-    expect(livePhotoMovs).toHaveLength(0)
+    const { candidates, livePhotoVideos } = scanSourceFiles(sourceDir)
+    expect(candidates.some((p) => p.endsWith('IMG_5678.jpg'))).toBe(true)
+    expect(livePhotoVideos.some((p) => p.endsWith('IMG_5678.mp4'))).toBe(true)
+    expect(candidates.some((p) => p.endsWith('IMG_5678.mp4'))).toBe(false)
   })
 
-  it('handles all supported extensions', () => {
+  it('treats standalone .MOV files as importable candidates (not live photo)', () => {
+    touch(join(sourceDir, 'video.MOV')) // no sibling photo
+
+    const { candidates, livePhotoVideos } = scanSourceFiles(sourceDir)
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]).toContain('video.MOV')
+    expect(livePhotoVideos).toHaveLength(0)
+  })
+
+  it('treats standalone .MP4 files as importable candidates (not live photo)', () => {
+    touch(join(sourceDir, 'video.mp4')) // no sibling photo
+
+    const { candidates, livePhotoVideos } = scanSourceFiles(sourceDir)
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]).toContain('video.mp4')
+    expect(livePhotoVideos).toHaveLength(0)
+  })
+
+  it('handles all supported extensions (images + videos)', () => {
     const exts = [
       '.jpg',
       '.jpeg',
@@ -154,10 +174,17 @@ describe('scanSourceFiles', () => {
       '.tif',
       '.cr2',
       '.nef',
-      '.arw'
+      '.arw',
+      '.mp4',
+      '.mov',
+      '.avi',
+      '.mts',
+      '.3gp',
+      '.m4v',
+      '.mpg'
     ]
-    for (const ext of exts) {
-      touch(join(sourceDir, `file${ext}`))
+    for (let i = 0; i < exts.length; i++) {
+      touch(join(sourceDir, `file${i}${exts[i]}`))
     }
     const { candidates } = scanSourceFiles(sourceDir)
     expect(candidates).toHaveLength(exts.length)
@@ -431,8 +458,7 @@ describe('buildImportPlan', () => {
     expect(plan2.entries[0].errorMessage).toContain('42')
   })
 
-  it('counts Live Photo MOVs in livePhotosDiscarded', async () => {
-    // Use lowercase .heic — isLivePhotoMov checks for lowercase on case-sensitive filesystems (Linux CI)
+  it('counts Live Photo videos in livePhotosDiscarded', async () => {
     touch(join(sourceDir, 'IMG_1234.heic'))
     touch(join(sourceDir, 'IMG_1234.MOV'))
 
@@ -489,6 +515,78 @@ describe('buildImportPlan', () => {
     expect(plan.entries[0].width).toBeNull()
     expect(plan.entries[0].height).toBeNull()
   })
+
+  it('skips pHash for video files and sets mediaType to video', async () => {
+    touch(join(sourceDir, 'clip.mp4'))
+    let phashCalled = false
+
+    const plan = await buildImportPlan(sourceDir, libraryDir, db, baseConfig, () => {}, {
+      loadExif: nullExifLoader,
+      computePhash: async () => {
+        phashCalled = true
+        return { phash: 'should-not-be-used', width: 100, height: 100 }
+      }
+    })
+
+    expect(phashCalled).toBe(false)
+    expect(plan.entries).toHaveLength(1)
+    expect(plan.entries[0].mediaType).toBe('video')
+    expect(plan.entries[0].phash).toBeNull()
+    expect(plan.entries[0].width).toBeNull()
+    expect(plan.entries[0].height).toBeNull()
+    expect(plan.entries[0].status).toBe('ready')
+  })
+
+  it('detects video duplicates by filename + file_size', async () => {
+    touch(join(sourceDir, 'clip.mp4'), 'video-content')
+
+    // Seed a video with same filename and size in the library DB
+    db.db
+      .prepare(
+        `INSERT INTO photos (path, filename, phash, date_taken, date_taken_source,
+           width, height, file_size, file_mtime, source, google_id, imported_at, created_at, media_type)
+         VALUES (?, ?, NULL, NULL, NULL, NULL, NULL, ?, '', 'local', NULL, '', '', 'video')`
+      )
+      .run('2025/2025.01/clip.mp4', 'clip.mp4', Buffer.byteLength('video-content'))
+
+    const plan = await buildImportPlan(sourceDir, libraryDir, db, baseConfig, () => {}, {
+      loadExif: nullExifLoader,
+      computePhash: nullPhashComputer
+    })
+
+    expect(plan.entries[0].status).toBe('duplicate')
+    expect(plan.entries[0].duplicateOf).toBe('2025/2025.01/clip.mp4')
+  })
+
+  it('does not mark video as duplicate when filename matches but size differs', async () => {
+    touch(join(sourceDir, 'clip.mp4'), 'short')
+
+    db.db
+      .prepare(
+        `INSERT INTO photos (path, filename, phash, date_taken, date_taken_source,
+           width, height, file_size, file_mtime, source, google_id, imported_at, created_at, media_type)
+         VALUES (?, ?, NULL, NULL, NULL, NULL, NULL, ?, '', 'local', NULL, '', '', 'video')`
+      )
+      .run('2025/2025.01/clip.mp4', 'clip.mp4', 99999)
+
+    const plan = await buildImportPlan(sourceDir, libraryDir, db, baseConfig, () => {}, {
+      loadExif: nullExifLoader,
+      computePhash: nullPhashComputer
+    })
+
+    expect(plan.entries[0].status).toBe('ready')
+  })
+
+  it('sets mediaType to photo for image files', async () => {
+    touch(join(sourceDir, 'photo.jpg'))
+
+    const plan = await buildImportPlan(sourceDir, libraryDir, db, baseConfig, () => {}, {
+      loadExif: nullExifLoader,
+      computePhash: nullPhashComputer
+    })
+
+    expect(plan.entries[0].mediaType).toBe('photo')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -532,6 +630,7 @@ describe('executeImportPlan', () => {
       fileSize: 12345,
       status: 'ready',
       stagedPath: undefined,
+      mediaType: 'photo',
       ...overrides
     }
   }
@@ -566,6 +665,31 @@ describe('executeImportPlan', () => {
     expect(photos).toHaveLength(1)
     expect(photos[0].path).toBe('2024/2024.06/photo.jpg')
     expect(photos[0].phash).toBe('abc123')
+  })
+
+  it('stores media_type as video when importing a video entry', async () => {
+    const plan = makePlan([
+      readyEntry({
+        sourcePath: '/source/clip.mp4',
+        destinationRelativePath: '2024/2024.06/clip.mp4',
+        phash: null,
+        width: null,
+        height: null,
+        mediaType: 'video'
+      })
+    ])
+    await executeImportPlan(plan, libraryDir, tempDir, db, baseConfig, noop, {
+      copyFile: noop,
+      moveFile: noop,
+      mkdirp: noop,
+      statFile: mockStat,
+      rmTempDir: noop
+    })
+
+    const row = db.db
+      .prepare('SELECT media_type FROM photos WHERE path = ?')
+      .get('2024/2024.06/clip.mp4') as { media_type: string }
+    expect(row.media_type).toBe('video')
   })
 
   it('skips duplicate entries and counts them in skipped', async () => {
@@ -869,7 +993,8 @@ describe('executeImportPlan', () => {
           width: null,
           height: null,
           fileSize: 19,
-          status: 'ready'
+          status: 'ready',
+          mediaType: 'photo'
         }
       ],
       livePhotosDiscarded: 0,
