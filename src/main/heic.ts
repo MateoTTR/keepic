@@ -14,16 +14,16 @@ const SAMPLE_SIZE = 32
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the candidate HEIC/HEIF companion paths for a given .MOV file.
- * Replaces the .MOV extension with .heic and .heif (lowercase).
+ * Returns the candidate photo companion paths for a given video file.
+ * Replaces the video extension with .heic, .heif, .jpg, .jpeg (lowercase).
  * On case-insensitive filesystems (Windows/macOS), lowercase lookups are
- * sufficient to match uppercase extensions such as .HEIC or .HEIF.
+ * sufficient to match uppercase extensions such as .HEIC or .JPG.
  *
- * Example: '/photos/IMG_1234.MOV' → ['/photos/IMG_1234.heic', '/photos/IMG_1234.heif']
+ * Example: '/photos/IMG_1234.MOV' → ['/photos/IMG_1234.heic', '/photos/IMG_1234.heif', '/photos/IMG_1234.jpg', '/photos/IMG_1234.jpeg']
  */
-export function getHeicCandidatePaths(movPath: string): string[] {
-  const stem = movPath.slice(0, -extname(movPath).length)
-  return [stem + '.heic', stem + '.heif']
+export function getPhotoCandidatePaths(videoPath: string): string[] {
+  const stem = videoPath.slice(0, -extname(videoPath).length)
+  return [stem + '.heic', stem + '.heif', stem + '.jpg', stem + '.jpeg']
 }
 
 export function isHeicFile(filePath: string): boolean {
@@ -38,18 +38,30 @@ export function isHeicFile(filePath: string): boolean {
 /** Injectable function type for checking file existence. */
 export type ExistsChecker = (path: string) => boolean
 
+const LIVE_PHOTO_VIDEO_EXTENSIONS = new Set(['.mov', '.mp4'])
+
 /**
- * Returns true if `movPath` is the video component of an iPhone Live Photo.
+ * Returns true if the file extension is a potential Live Photo video companion.
+ */
+export function isLivePhotoVideoExtension(name: string): boolean {
+  return LIVE_PHOTO_VIDEO_EXTENSIONS.has(extname(name).toLowerCase())
+}
+
+/**
+ * Returns true if `videoPath` is the video component of an iPhone Live Photo.
  *
- * A .MOV file is a Live Photo companion when a HEIC or HEIF still image with
- * the same stem exists in the same directory.
+ * A .MOV or .MP4 file is a Live Photo companion when a photo still image
+ * (.heic, .heif, .jpg, .jpeg) with the same stem exists in the same directory.
  *
- * @param movPath    - Absolute path to the .MOV file to check.
+ * @param videoPath   - Absolute path to the video file to check.
  * @param checkExists - Injectable existence checker (defaults to existsSync).
  */
-export function isLivePhotoMov(movPath: string, checkExists: ExistsChecker = existsSync): boolean {
-  if (extname(movPath).toLowerCase() !== '.mov') return false
-  return getHeicCandidatePaths(movPath).some(checkExists)
+export function isLivePhotoVideo(
+  videoPath: string,
+  checkExists: ExistsChecker = existsSync
+): boolean {
+  if (!isLivePhotoVideoExtension(videoPath)) return false
+  return getPhotoCandidatePaths(videoPath).some(checkExists)
 }
 
 // ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ import { readExifDate, defaultExifLoader, type ExifLoader } from './exif'
 import { type PhashComputer, type PhashResult } from './phash'
 import { createUniversalPhashComputer } from './heic'
 import { withConcurrency, DEFAULT_CONCURRENCY } from './concurrency'
+import { getMediaType, type MediaType } from '../shared/media-type'
 import type { KeePicDatabase } from './db/database'
 import type { IndexProgress, IndexResult } from '../shared/types'
 
@@ -12,7 +13,7 @@ import type { IndexProgress, IndexResult } from '../shared/types'
 // Constants
 // ---------------------------------------------------------------------------
 
-const IMAGE_EXTENSIONS = new Set([
+const MEDIA_EXTENSIONS = new Set([
   '.jpg',
   '.jpeg',
   '.heic',
@@ -22,15 +23,22 @@ const IMAGE_EXTENSIONS = new Set([
   '.tif',
   '.cr2',
   '.nef',
-  '.arw'
+  '.arw',
+  '.mp4',
+  '.mov',
+  '.avi',
+  '.mts',
+  '.3gp',
+  '.m4v',
+  '.mpg'
 ])
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function isImageFile(name: string): boolean {
-  return IMAGE_EXTENSIONS.has(extname(name).toLowerCase())
+function isMediaFile(name: string): boolean {
+  return MEDIA_EXTENSIONS.has(extname(name).toLowerCase())
 }
 
 /**
@@ -71,7 +79,7 @@ export function scanLibraryFiles(libraryPath: string): string[] {
       }
 
       for (const fileEntry of fileEntries) {
-        if (fileEntry.isFile() && isImageFile(fileEntry.name)) {
+        if (fileEntry.isFile() && isMediaFile(fileEntry.name)) {
           files.push(`${yearEntry.name}/${subEntry.name}/${fileEntry.name}`)
         }
       }
@@ -108,6 +116,7 @@ function upsertPhoto(
     height: number | null
     fileSize: number
     fileMtime: string
+    mediaType: MediaType
     now: string
   }
 ): void {
@@ -116,8 +125,8 @@ function upsertPhoto(
       `INSERT INTO photos
          (path, filename, phash, date_taken, date_taken_source,
           width, height, file_size, file_mtime, source,
-          google_id, imported_at, created_at, deleted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', NULL, ?, ?, NULL)
+          google_id, imported_at, created_at, deleted_at, media_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', NULL, ?, ?, NULL, ?)
        ON CONFLICT(path) DO UPDATE SET
          phash             = excluded.phash,
          date_taken        = excluded.date_taken,
@@ -126,6 +135,7 @@ function upsertPhoto(
          height            = excluded.height,
          file_size         = excluded.file_size,
          file_mtime        = excluded.file_mtime,
+         media_type        = excluded.media_type,
          deleted_at        = NULL`
     )
     .run(
@@ -139,7 +149,8 @@ function upsertPhoto(
       params.fileSize,
       params.fileMtime,
       params.now,
-      params.now
+      params.now,
+      params.mediaType
     )
 }
 
@@ -172,15 +183,18 @@ export interface RunIndexerOptions {
 /** Result of Phase 1 processing for a single file. */
 interface IndexFileResult {
   relativePath: string
-  skipped: true | {
-    absolutePath: string
-    phashResult: PhashResult | null
-    exifDate: Date
-    exifSource: string
-    fileSize: number
-    fileMtime: string
-    error?: { file: string; error: string }
-  }
+  mediaType: MediaType
+  skipped:
+    | true
+    | {
+        absolutePath: string
+        phashResult: PhashResult | null
+        exifDate: Date
+        exifSource: string
+        fileSize: number
+        fileMtime: string
+        error?: { file: string; error: string }
+      }
 }
 
 /**
@@ -218,6 +232,7 @@ export async function runIndexer(
     concurrency,
     async (relativePath): Promise<IndexFileResult> => {
       const absolutePath = join(libraryPath, relativePath)
+      const mediaType = getMediaType(relativePath)
       const stat = statSync(absolutePath)
       const fileMtime = stat.mtime.toISOString()
 
@@ -225,17 +240,19 @@ export async function runIndexer(
       if (storedMtime === fileMtime) {
         phase1Processed++
         onProgress({ total, processed: phase1Processed, indexed: 0, skipped: 0 })
-        return { relativePath, skipped: true }
+        return { relativePath, mediaType, skipped: true }
       }
 
       let phashResult: PhashResult | null = null
       let error: { file: string; error: string } | undefined
-      try {
-        phashResult = await computePhash(absolutePath)
-      } catch (err) {
-        error = {
-          file: relativePath,
-          error: err instanceof Error ? err.message : String(err)
+      if (mediaType !== 'video') {
+        try {
+          phashResult = await computePhash(absolutePath)
+        } catch (err) {
+          error = {
+            file: relativePath,
+            error: err instanceof Error ? err.message : String(err)
+          }
         }
       }
 
@@ -246,6 +263,7 @@ export async function runIndexer(
 
       return {
         relativePath,
+        mediaType,
         skipped: {
           absolutePath,
           phashResult,
@@ -288,6 +306,7 @@ export async function runIndexer(
         height: data.phashResult?.height ?? null,
         fileSize: data.fileSize,
         fileMtime: data.fileMtime,
+        mediaType: result.mediaType,
         now
       })
       indexed++

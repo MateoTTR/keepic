@@ -42,5 +42,8 @@ export const migrations: readonly string[] = [
   `,
 
   // Migration 1 → 2: add deleted_at to track files removed from the shared library
-  `ALTER TABLE photos ADD COLUMN deleted_at TEXT;`
+  `ALTER TABLE photos ADD COLUMN deleted_at TEXT;`,
+
+  // Migration 2 → 3: add media_type to distinguish photos from videos
+  `ALTER TABLE photos ADD COLUMN media_type TEXT NOT NULL DEFAULT 'photo';`
 ]

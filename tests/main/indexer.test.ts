@@ -127,15 +127,25 @@ describe('scanLibraryFiles', () => {
     expect(files).toHaveLength(0)
   })
 
-  it('ignores non-image files', () => {
+  it('ignores non-media files', () => {
     buildLibrary(libraryRoot, {
-      '2025/2025.01': ['photo.jpg', 'document.pdf', 'notes.txt', 'video.mp4']
+      '2025/2025.01': ['photo.jpg', 'document.pdf', 'notes.txt']
     })
     const files = scanLibraryFiles(libraryRoot)
     expect(files).toEqual(['2025/2025.01/photo.jpg'])
   })
 
-  it('handles all supported image extensions', () => {
+  it('finds video files alongside images', () => {
+    buildLibrary(libraryRoot, {
+      '2025/2025.01': ['photo.jpg', 'video.mp4', 'clip.mov']
+    })
+    const files = scanLibraryFiles(libraryRoot)
+    expect(files).toHaveLength(3)
+    expect(files).toContain('2025/2025.01/video.mp4')
+    expect(files).toContain('2025/2025.01/clip.mov')
+  })
+
+  it('handles all supported media extensions (images + videos)', () => {
     const extensions = [
       'a.jpg',
       'b.jpeg',
@@ -146,7 +156,14 @@ describe('scanLibraryFiles', () => {
       'g.tif',
       'h.cr2',
       'i.nef',
-      'j.arw'
+      'j.arw',
+      'k.mp4',
+      'l.mov',
+      'm.avi',
+      'n.mts',
+      'o.3gp',
+      'p.m4v',
+      'q.mpg'
     ]
     buildLibrary(libraryRoot, { '2025/2025.01': extensions })
     const files = scanLibraryFiles(libraryRoot)
@@ -438,6 +455,48 @@ describe('runIndexer', () => {
       .prepare('SELECT phash FROM photos WHERE path LIKE ?')
       .get('%bad.heic') as { phash: string | null }
     expect(row.phash).toBeNull()
+  })
+
+  it('stores media_type as photo for image files and video for video files', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['photo.jpg', 'clip.mp4'] })
+    await runIndexer(libraryRoot, db, () => {}, opts)
+
+    const photoRow = db.db
+      .prepare('SELECT media_type FROM photos WHERE path = ?')
+      .get('2025/2025.01/photo.jpg') as { media_type: string }
+    expect(photoRow.media_type).toBe('photo')
+
+    const videoRow = db.db
+      .prepare('SELECT media_type FROM photos WHERE path = ?')
+      .get('2025/2025.01/clip.mp4') as { media_type: string }
+    expect(videoRow.media_type).toBe('video')
+  })
+
+  it('skips pHash computation for video files', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['clip.mp4'] })
+    let phashCalled = false
+    const videoPhashComputer: PhashComputer = async () => {
+      phashCalled = true
+      return { phash: 'should-not-be-used', width: 100, height: 100 }
+    }
+    await runIndexer(libraryRoot, db, () => {}, {
+      loadExif: nullExifLoader,
+      computePhash: videoPhashComputer
+    })
+
+    expect(phashCalled).toBe(false)
+    const row = db.db
+      .prepare('SELECT phash, width, height, media_type FROM photos WHERE path = ?')
+      .get('2025/2025.01/clip.mp4') as {
+      phash: string | null
+      width: number | null
+      height: number | null
+      media_type: string
+    }
+    expect(row.phash).toBeNull()
+    expect(row.width).toBeNull()
+    expect(row.height).toBeNull()
+    expect(row.media_type).toBe('video')
   })
 
   it('reports non-Error pHash failures as strings', async () => {

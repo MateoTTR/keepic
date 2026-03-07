@@ -55,10 +55,10 @@ export function createProtocolHandler(
     }
 
     try {
-      const buffer = await thumbnailGenerator(resolvedPath, { maxDim })
-      return new Response(new Uint8Array(buffer), {
+      const result = await thumbnailGenerator(resolvedPath, { maxDim })
+      return new Response(new Uint8Array(result.buffer), {
         headers: {
-          'Content-Type': 'image/jpeg',
+          'Content-Type': result.contentType,
           'Cache-Control': 'max-age=3600'
         }
       })
