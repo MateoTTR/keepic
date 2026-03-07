@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import type { ImportPlanEntry, PlanProgress } from '../../../shared/types'
+  import type { ImportPlanEntry, PlanProgress, SkippedFile } from '../../../shared/types'
   import Progress from '../components/ui/Progress.svelte'
 
   interface Props {
     sourceFolder: string
     onProgress: (p: PlanProgress) => void
-    onSuccess: (result: { entries: ImportPlanEntry[]; livePhotosDiscarded: number }) => void
+    onSuccess: (result: { entries: ImportPlanEntry[]; livePhotosDiscarded: number; skippedFiles: SkippedFile[] }) => void
     onError: () => void
   }
 
@@ -25,7 +25,7 @@
       errorMessage = result.error
       setTimeout(() => onError(), 2000)
     } else {
-      onSuccess({ entries: result.entries, livePhotosDiscarded: result.livePhotosDiscarded })
+      onSuccess({ entries: result.entries, livePhotosDiscarded: result.livePhotosDiscarded, skippedFiles: result.skippedFiles })
     }
   })
 </script>
