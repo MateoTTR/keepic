@@ -1,9 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, protocol, shell } from 'electron'
 import { join } from 'path'
 import { Worker } from 'worker_threads'
 import { is } from '@electron-toolkit/utils'
 import { ConfigManager } from './config'
 import { KeePicDatabase } from './db/database'
+import { createProtocolHandler } from './protocol'
 import {
   handleGetConfig,
   handleSelectLibraryFolder,
@@ -28,7 +29,13 @@ import {
   handleCancelPickerDownload,
   type ActivePickerWorkerRef
 } from './ipc/google-photos-handlers'
+import { handleRevealInFolder, handleRevealLibraryFile } from './ipc/shell-handlers'
 import type { AppConfig, ImportPlan } from '../shared/types'
+
+/* v8 ignore next 3 -- must run before app.ready, cannot be tested in Vitest */
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'keepic-photo', privileges: { supportFetchAPI: true } }
+])
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -63,6 +70,10 @@ function createWindow(): void {
 app.whenReady().then(() => {
   const configManager = new ConfigManager(app.getPath('userData'))
   configManager.load()
+
+  // Register custom protocol for serving photo thumbnails to the renderer.
+  const protocolHandler = createProtocolHandler(() => configManager.get().libraryPath)
+  protocol.handle('keepic-photo', protocolHandler)
 
   // Open the database if a library path is already configured.
   let database: KeePicDatabase | null = null
@@ -197,6 +208,22 @@ app.whenReady().then(() => {
     if (!database) return []
     return handleScanDuplicates(database)
   })
+
+  // --- Shell IPC ---
+
+  ipcMain.handle('shell:reveal-in-folder', (_event, { absolutePath }: { absolutePath: string }) =>
+    handleRevealInFolder(absolutePath, shell.showItemInFolder.bind(shell))
+  )
+
+  ipcMain.handle(
+    'shell:reveal-library-file',
+    (_event, { relativePath }: { relativePath: string }) =>
+      handleRevealLibraryFile(
+        relativePath,
+        configManager.get().libraryPath,
+        shell.showItemInFolder.bind(shell)
+      )
+  )
 
   // --- Library indexer IPC ---
 

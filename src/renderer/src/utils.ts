@@ -9,6 +9,23 @@ export function formatDate(isoDate: string | null): string {
   return new Date(isoDate).toLocaleDateString()
 }
 
+export function thumbnailUrl(opts: {
+  absolutePath?: string
+  libraryRelPath?: string
+  maxDim?: number
+}): string {
+  const params = new URLSearchParams()
+  if (opts.absolutePath) {
+    params.set('path', opts.absolutePath)
+  } else if (opts.libraryRelPath) {
+    params.set('libraryRelPath', opts.libraryRelPath)
+  }
+  if (opts.maxDim) {
+    params.set('maxDim', String(opts.maxDim))
+  }
+  return `keepic-photo://thumbnail?${params.toString()}`
+}
+
 export function formatElapsed(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`
   const seconds = ms / 1000

@@ -176,7 +176,18 @@
 |---|---|---|---|
 | [REFACTOR-001](REFACTOR-001-heic-phash-simplification.md) | Simplify HEIC pHash workflow — superseded by TASK-037 | Refactor | `[x]` |
 | TASK-040 | Native C addon (libheif) for faster HEIC decode — superseded by POC-001 | Performance | `[-]` |
-| FEAT-001 | Side-by-side duplicate comparison viewer with thumbnails + "Reveal in Explorer/Finder" | Feature | P4 |
+
+---
+
+## Phase 13 — Duplicate Viewer (FEAT-001)
+
+> Visual duplicate comparison with thumbnail previews and "Reveal in Folder" button.
+> Custom Electron protocol (`keepic-photo://`) for serving images to the sandboxed renderer.
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| FEAT-001a | Thumbnail protocol + shell IPC (backend: `thumbnail.ts`, `protocol.ts`, `shell-handlers.ts`) | P2 | `[~]` | — |
+| FEAT-001b | Thumbnail UI components + screen updates (frontend: `PhotoThumbnail.svelte`, ReviewScreen, DeduplicationScreen) | P2 | `[ ]` | — |
 
 ---
 

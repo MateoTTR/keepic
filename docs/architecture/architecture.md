@@ -64,6 +64,7 @@ The app is **append-only**: it never modifies or deletes files already in the sh
 - Web-based interface in the Electron renderer
 - Responsibilities: import wizard, settings screen, progress display, duplicate review
 - Communicates with Main Process via IPC (contextBridge)
+- **Image display**: local photo files are served to the renderer via a custom Electron protocol (`keepic-photo://`) registered with `protocol.handle()`. The renderer uses standard `<img src="keepic-photo://thumbnail?path=...">` tags. The protocol handler reads the file, resizes it via sharp (300px max), and returns a JPEG buffer. HEIC files are decoded via an injectable `HeicDecodeFn` (defaults to heic-decode WASM).
 - In v1: no photo browser (users use OS file explorer)
 
 ### 3.2 Main Process

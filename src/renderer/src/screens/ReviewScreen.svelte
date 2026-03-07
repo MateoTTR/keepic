@@ -3,7 +3,8 @@
   import Button from '../components/ui/Button.svelte'
   import Badge from '../components/ui/Badge.svelte'
   import Separator from '../components/ui/Separator.svelte'
-  import { formatBytes, formatDate, formatElapsed } from '../utils'
+  import PhotoThumbnail from '../components/PhotoThumbnail.svelte'
+  import { formatBytes, formatDate, formatElapsed, thumbnailUrl } from '../utils'
 
   interface Props {
     plan: ImportPlanEntry[]
@@ -148,23 +149,44 @@
               </p>
             {/if}
           {:else if entry.status === 'duplicate'}
-            <div class="space-y-1">
-              <p class="text-gray-600">
-                <span class="font-medium">Source:</span>
-                <span class="font-mono text-xs ml-1">{filename(entry.sourcePath)}</span>
-                <span class="text-gray-400 mx-1">•</span>
-                {formatBytes(entry.fileSize)}
-                <span class="text-gray-400 mx-1">•</span>
-                {formatDate(entry.dateTaken)}
-              </p>
-              <p class="text-gray-600">
-                <span class="font-medium">Matches:</span>
-                <span class="font-mono text-xs ml-1">{entry.duplicateOf ?? '—'}</span>
-              </p>
+            <div class="grid grid-cols-2 gap-6">
+              <!-- Source photo -->
+              <div class="space-y-2">
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Source</p>
+                <PhotoThumbnail
+                  src={thumbnailUrl({ absolutePath: entry.sourcePath })}
+                  alt={filename(entry.sourcePath)}
+                  class="w-full max-w-[300px] aspect-auto"
+                />
+                <div class="space-y-0.5 text-sm text-gray-600">
+                  <p class="font-mono text-xs truncate">{filename(entry.sourcePath)}</p>
+                  <p>{formatBytes(entry.fileSize)}{entry.width && entry.height ? ` · ${entry.width}×${entry.height}` : ''}</p>
+                  <p>{formatDate(entry.dateTaken)}</p>
+                </div>
+              </div>
+              <!-- Library match -->
+              <div class="space-y-2">
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Existing in library</p>
+                {#if entry.duplicateOf}
+                  <PhotoThumbnail
+                    src={thumbnailUrl({ libraryRelPath: entry.duplicateOf })}
+                    alt={entry.duplicateOf}
+                    class="w-full max-w-[300px] aspect-auto"
+                  />
+                  <div class="space-y-0.5 text-sm text-gray-600">
+                    <p class="font-mono text-xs truncate">{entry.duplicateOf}</p>
+                    <Button variant="outline" size="sm" onclick={() => window.keepic.shell.revealLibraryFile(entry.duplicateOf!)}>
+                      Reveal in Folder
+                    </Button>
+                  </div>
+                {:else}
+                  <p class="text-sm text-gray-400">—</p>
+                {/if}
+              </div>
             </div>
-            <div class="flex gap-2 pt-1">
+            <div class="flex gap-2 pt-3">
               <Button variant="outline" size="sm" onclick={() => { expandedPath = null }}>
-                Skip ✓
+                Skip
               </Button>
               <Button size="sm" onclick={() => importAnyway(entry)}>
                 Import anyway
