@@ -8,7 +8,7 @@ import type { ThumbnailGenerator } from '../../src/main/thumbnail'
 
 function makeMockGenerator(returnBuffer?: Buffer): ThumbnailGenerator {
   const buf = returnBuffer ?? Buffer.from([0xff, 0xd8, 0xff, 0xe0]) // JPEG header
-  return async (_path, _opts) => buf
+  return async () => buf
 }
 
 function makeMockGeneratorSpy(): {
@@ -86,9 +86,7 @@ describe('createProtocolHandler', () => {
       const getLibPath: LibraryPathGetter = () => '/shared/photos'
       const handler = createProtocolHandler(getLibPath, generator)
 
-      await handler(
-        makeRequest('keepic-photo://thumbnail?libraryRelPath=2024/2024.06/IMG.jpg')
-      )
+      await handler(makeRequest('keepic-photo://thumbnail?libraryRelPath=2024/2024.06/IMG.jpg'))
 
       expect(calls).toHaveLength(1)
       expect(calls[0].path).toBe('/shared/photos/2024/2024.06/IMG.jpg')
@@ -110,9 +108,7 @@ describe('createProtocolHandler', () => {
       const handler = createProtocolHandler(() => '/lib', generator)
 
       await handler(
-        makeRequest(
-          'keepic-photo://thumbnail?libraryRelPath=2024/2024.04.15-19.Caf%C3%A9/IMG.jpg'
-        )
+        makeRequest('keepic-photo://thumbnail?libraryRelPath=2024/2024.04.15-19.Caf%C3%A9/IMG.jpg')
       )
 
       expect(calls[0].path).toBe('/lib/2024/2024.04.15-19.Café/IMG.jpg')
@@ -142,21 +138,14 @@ describe('createProtocolHandler', () => {
 
     it('returns 400 for maxDim <= 0', async () => {
       const handler = createProtocolHandler(() => null, makeMockGenerator())
-      const response = await handler(
-        makeRequest('keepic-photo://thumbnail?path=/img.jpg&maxDim=0')
-      )
+      const response = await handler(makeRequest('keepic-photo://thumbnail?path=/img.jpg&maxDim=0'))
 
       expect(response.status).toBe(400)
     })
 
     it('returns 404 when thumbnail generator throws', async () => {
-      const handler = createProtocolHandler(
-        () => null,
-        makeFailingGenerator('File not found')
-      )
-      const response = await handler(
-        makeRequest('keepic-photo://thumbnail?path=/nonexistent.jpg')
-      )
+      const handler = createProtocolHandler(() => null, makeFailingGenerator('File not found'))
+      const response = await handler(makeRequest('keepic-photo://thumbnail?path=/nonexistent.jpg'))
 
       expect(response.status).toBe(404)
       const text = await response.text()
@@ -170,9 +159,7 @@ describe('createProtocolHandler', () => {
       const handler = createProtocolHandler(() => '/lib', generator)
 
       await handler(
-        makeRequest(
-          'keepic-photo://thumbnail?path=/abs/IMG.jpg&libraryRelPath=rel/IMG.jpg'
-        )
+        makeRequest('keepic-photo://thumbnail?path=/abs/IMG.jpg&libraryRelPath=rel/IMG.jpg')
       )
 
       expect(calls[0].path).toBe('/abs/IMG.jpg')

@@ -51,26 +51,22 @@ describe('handleRevealLibraryFile', () => {
 
   it('handles relative paths with event folder names', () => {
     const { fn, calls } = makeSpy()
-    handleRevealLibraryFile(
-      '2024/2024.04.15-19.Londres/IMG.jpg',
-      '/lib',
-      fn
-    )
+    handleRevealLibraryFile('2024/2024.04.15-19.Londres/IMG.jpg', '/lib', fn)
 
     expect(calls).toEqual(['/lib/2024/2024.04.15-19.Londres/IMG.jpg'])
   })
 
   it('throws when library path is null', () => {
     const { fn } = makeSpy()
-    expect(() =>
-      handleRevealLibraryFile('2024/IMG.jpg', null, fn)
-    ).toThrow('Library path not configured')
+    expect(() => handleRevealLibraryFile('2024/IMG.jpg', null, fn)).toThrow(
+      'Library path not configured'
+    )
   })
 
   it('throws when library path is empty string', () => {
     const { fn } = makeSpy()
-    expect(() =>
-      handleRevealLibraryFile('2024/IMG.jpg', '', fn)
-    ).toThrow('Library path not configured')
+    expect(() => handleRevealLibraryFile('2024/IMG.jpg', '', fn)).toThrow(
+      'Library path not configured'
+    )
   })
 })
