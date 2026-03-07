@@ -1,6 +1,10 @@
 # KeePic — Task Backlog
 
-> Tasks are numbered in planned execution order. Each task has a detailed file at `TASK-NNN-*.md`.
+> All tasks use a single `TASK-NNN` numbering sequence in chronological order.
+> The type tag after the number indicates the nature: `feat`, `fix`, `perf`, `refactor`, `doc`.
+> Example: `TASK-046-feat-...`, `TASK-047-perf-...`, `TASK-048-fix-...`
+> Each task has a detailed file at `docs/tasks/TASK-NNN-*.md`.
+> **Legacy exception**: tasks before TASK-046 may use older prefixes (`FEAT-`, `PERF-`, `REFACTOR-`).
 > Update this file at the end of each session.
 
 ---
@@ -152,12 +156,18 @@
 > ~400-500ms/HEIC file vs ~14ms/JPEG (30-40x slower). `withConcurrency` (PERF-001)
 > provides no benefit because WASM blocks the V8 event loop.
 >
-> A PoC is needed to evaluate native decoding strategies before committing to an approach.
+> **POC-001 completed** (session 038): benchmarked 5 strategies on 10 iPhone 12MP HEIC files.
+> **Recommended**: `libheif-node-dy` (libheif N-API addon) with `worker_threads`:
+> - Sequential: 282ms/file (1.6x faster than WASM)
+> - Parallel N=8: 370ms total for 10 files = **12.6x faster** than WASM baseline (4662ms)
+> - Full report: `~/heic-decode-poc/REPORT.md`, integration spec: `~/heic-decode-poc/docs/integration-strategy.md`
+>
+> TASK-046-perf plan: create `@keepic/heif-decode` addon (N-API, prebuild per platform), replace `heic-decode` in KeePic.
 
 | # | Title | Priority | Status | Session |
 |---|---|---|---|---|
-| POC-001 | HEIC decoding benchmark PoC — compare WASM vs native strategies (libheif addon, sharp rebuild, etc.) | P1 | `[ ]` | — |
-| PERF-002 | True HEIC parallel decoding — approach TBD based on POC-001 results | P2 | `[ ]` | — |
+| POC-001 | HEIC decoding benchmark PoC — compare WASM vs native strategies | P1 | `[x]` | 2026-03-07-session-038 |
+| TASK-046-perf | Native HEIC decoding via `@keepic/heif-decode` (libheif N-API addon + worker_threads) — 12.6x faster than WASM | P2 | `[ ]` | — |
 | PERF-003 | Concurrent Google Picker downloads — apply withConcurrency to HTTP fetches (I/O-bound) | P3 | `[x]` | 2026-03-07-session-040 |
 
 ---
@@ -220,6 +230,17 @@
 |---|---|---|---|---|
 | FEAT-003a | Backend: collect skipped/ignored file lists during import scan and library indexer (Live Photo videos, unrecognized extensions) and include them in results | P2 | `[x]` | 2026-03-07-session-042 |
 | FEAT-003b | Frontend: display skipped/ignored files in import report and re-index report (collapsible sections by category) | P2 | `[x]` | 2026-03-07-session-042 |
+
+---
+
+## Phase 16 — v0.3.x Bug Fixes & Improvements
+
+> Bugs and improvements found during manual testing of v0.3.0 (2026-03-07).
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| TASK-047-fix | Fix `plan.skippedFiles is not iterable` — skippedFiles not propagated through UI flow (PlanningScreen -> App -> ExecutionScreen) | P0 | `[~]` | 2026-03-07-session-043 |
+| TASK-048-feat | Detect and report Live Photo video companions during library re-index (informational, no deletion) | P3 | `[ ]` | — |
 
 ---
 
