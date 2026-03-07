@@ -1,6 +1,6 @@
 # TASK-042 — Fix Google Picker HEIC files served as JPEG
 
-## Status: In Progress
+## Status: Complete (PR #43, merged)
 
 ## Problem
 
