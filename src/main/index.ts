@@ -19,6 +19,7 @@ import {
 } from './ipc/import-handlers'
 import { handleGetAuthStatus, handleConnect, handleDisconnect } from './ipc/google-auth-handlers'
 import { handleGetLibraryStats } from './ipc/library-stats-handler'
+import { cleanupStaleTempDirs } from './temp-cleanup'
 import { handleScanDuplicates } from './ipc/dedup-scan-handler'
 import {
   handleGetLastDownloadDate,
@@ -68,6 +69,9 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Fire-and-forget cleanup of stale temp dirs from previous sessions
+  void cleanupStaleTempDirs(app.getPath('userData'))
+
   const configManager = new ConfigManager(app.getPath('userData'))
   configManager.load()
 
