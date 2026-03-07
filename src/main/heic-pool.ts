@@ -24,7 +24,7 @@ export type HeicDecodeWorkerPath = string
 /**
  * Pool of worker threads for parallel HEIC decoding via libheif N-API.
  *
- * Each worker loads `libheif-node-dy` and decodes HEIC buffers independently.
+ * Each worker loads `@keepic/heif-decode` and decodes HEIC buffers independently.
  * Output RGBA buffers are returned via transferList (zero-copy).
  *
  * The pool's `decode()` method is compatible with `HeicDecodeFn`:
