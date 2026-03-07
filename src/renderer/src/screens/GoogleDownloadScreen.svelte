@@ -2,6 +2,7 @@
   import { onDestroy } from 'svelte'
   import Button from '../components/ui/Button.svelte'
   import Progress from '../components/ui/Progress.svelte'
+  import { formatElapsed } from '../utils'
   import type { GoogleDownloadProgress, GoogleDownloadResult } from '../../../shared/types'
 
   interface Props {
@@ -19,6 +20,8 @@
   let sessionId: string | null = $state(null)
   let progress: GoogleDownloadProgress | null = $state(null)
   let downloadResult: GoogleDownloadResult | null = $state(null)
+  let downloadStartTime: number = $state(0)
+  let downloadElapsedMs: number = $state(0)
   let pollCount = 0
 
   const POLL_INTERVAL_MS = 3000
@@ -86,12 +89,14 @@
     if (!sessionId) return
 
     state = 'downloading'
+    downloadStartTime = Date.now()
 
     window.keepic.google.onPickerDownloadProgress((p) => {
       progress = p
     })
 
     window.keepic.google.onPickerDownloadComplete((r) => {
+      downloadElapsedMs = Date.now() - downloadStartTime
       window.keepic.google.removePickerDownloadListeners()
       if (r.status === 'completed') {
         downloadResult = r
@@ -214,7 +219,8 @@
     <div class="space-y-4">
       <div class="rounded-md bg-green-50 border border-green-200 p-4">
         <p class="text-sm text-green-800 font-medium">
-          {downloadResult!.downloaded} photo{downloadResult!.downloaded !== 1 ? 's' : ''} downloaded successfully.
+          {downloadResult!.downloaded} photo{downloadResult!.downloaded !== 1 ? 's' : ''} downloaded successfully
+          <span class="text-green-600 font-normal">in {formatElapsed(downloadElapsedMs)}</span>.
         </p>
       </div>
 
