@@ -657,7 +657,7 @@ describe('executeImportPlan', () => {
   })
 
   function makePlan(entries: ImportPlan['entries']): ImportPlan {
-    return { entries, livePhotosDiscarded: 0, sourceFolder: '/source' }
+    return { entries, livePhotosDiscarded: 0, sourceFolder: '/source', skippedFiles: [] }
   }
 
   function readyEntry(overrides: Partial<ImportPlan['entries'][0]> = {}): ImportPlan['entries'][0] {
@@ -1006,7 +1006,7 @@ describe('executeImportPlan', () => {
   })
 
   it('propagates livePhotosDiscarded from the plan', async () => {
-    const plan: ImportPlan = { entries: [], livePhotosDiscarded: 3, sourceFolder: '/source' }
+    const plan: ImportPlan = { entries: [], livePhotosDiscarded: 3, sourceFolder: '/source', skippedFiles: [] }
     const result = await executeImportPlan(plan, libraryDir, tempDir, db, baseConfig, noop, {
       rmTempDir: noop
     })
@@ -1040,7 +1040,8 @@ describe('executeImportPlan', () => {
         }
       ],
       livePhotosDiscarded: 0,
-      sourceFolder: srcDir
+      sourceFolder: srcDir,
+      skippedFiles: []
     }
 
     // No options injected — exercises all default implementations
