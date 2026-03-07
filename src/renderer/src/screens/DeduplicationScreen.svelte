@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import Button from '../components/ui/Button.svelte'
+  import PhotoThumbnail from '../components/PhotoThumbnail.svelte'
+  import { thumbnailUrl } from '../utils'
   import type { DuplicateGroup } from '../../../shared/types'
 
   interface Props {
@@ -56,15 +58,28 @@
             <p class="text-sm font-semibold text-gray-700">
               Group {i + 1} — {group.photos.length} identical photos
             </p>
-            <ul class="space-y-1">
+            <div class="flex flex-wrap gap-4">
               {#each group.photos as photo (photo.path)}
-                <li class="flex items-center gap-4 text-sm text-gray-600 font-mono text-xs">
-                  <span class="flex-1 truncate">{photo.path}</span>
-                  <span class="shrink-0 text-gray-400">{formatBytes(photo.fileSize)}</span>
-                  <span class="shrink-0 text-gray-400">{formatDate(photo.dateTaken)}</span>
-                </li>
+                <div class="w-48 space-y-2">
+                  <PhotoThumbnail
+                    src={thumbnailUrl({ libraryRelPath: photo.path })}
+                    alt={photo.filename}
+                    class="w-full aspect-auto"
+                  />
+                  <div class="space-y-0.5">
+                    <p class="font-mono text-xs text-gray-700 truncate" title={photo.path}>{photo.path}</p>
+                    <p class="text-xs text-gray-400">
+                      {formatBytes(photo.fileSize)}
+                      <span class="mx-1">&middot;</span>
+                      {formatDate(photo.dateTaken)}
+                    </p>
+                    <Button variant="outline" size="sm" onclick={() => window.keepic.shell.revealLibraryFile(photo.path)}>
+                      Reveal in Folder
+                    </Button>
+                  </div>
+                </div>
               {/each}
-            </ul>
+            </div>
           </div>
         {/each}
       </div>

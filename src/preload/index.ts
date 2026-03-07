@@ -132,6 +132,12 @@ const keepicAPI = {
       ipcRenderer.removeAllListeners('google:picker-download-progress')
       ipcRenderer.removeAllListeners('google:picker-download-complete')
     }
+  },
+  shell: {
+    revealInFolder: (absolutePath: string): Promise<void> =>
+      ipcRenderer.invoke('shell:reveal-in-folder', { absolutePath }),
+    revealLibraryFile: (relativePath: string): Promise<void> =>
+      ipcRenderer.invoke('shell:reveal-library-file', { relativePath })
   }
 }
 

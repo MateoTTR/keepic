@@ -144,8 +144,27 @@ Before placing a photo in the library, the app verifies:
 ### 2.5 Deduplication
 
 - Before placing any photo in the library, the app checks its pHash against the local index
-- If a match is found, the user is shown a side-by-side comparison and can: skip, replace (with confirmation), or import both (renamed)
+- If a match is found, the user is shown a **side-by-side visual comparison** with thumbnail previews and metadata (filename, file size, dimensions, capture date), and can: skip, or import anyway
 - A standalone deduplication scan can be triggered on the existing library at any time
+
+#### 2.5.1 Duplicate Viewer
+
+Duplicate photos are displayed with **thumbnail previews** generated on-the-fly via a custom Electron protocol (`keepic-photo://`). The renderer loads thumbnails as standard `<img>` tags — no base64 encoding or IPC round-trips needed.
+
+**Import review** (side-by-side):
+- When a duplicate is detected during import analysis, the expanded row shows the source photo and its library match side by side with thumbnails (300px max dimension) and metadata
+- The user can "Skip" (default) or "Import anyway"
+- A "Reveal in Folder" button opens the library match in the OS file explorer
+
+**Standalone deduplication scan** (grid):
+- Each duplicate group is displayed as a grid of thumbnail cards (2-3 per row)
+- Each card shows the thumbnail, relative path, file size, capture date, and a "Reveal in Folder" button
+- Users delete unwanted files manually via the OS file explorer, then re-index
+
+**Thumbnail generation**:
+- JPEG/PNG/TIFF: resized via sharp (~5ms)
+- HEIC/HEIF: decoded via heic-decode (WASM) then resized via sharp (~400ms) — the HEIC decoder is injectable for future replacement with a native decoder
+- Browser-level caching (`Cache-Control`) avoids redundant processing within a session
 
 ### 2.6 Date Extraction
 
