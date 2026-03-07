@@ -172,9 +172,10 @@ export class HeicDecodePool {
 /**
  * Resolves the default worker path for the HEIC decode worker.
  *
- * Called from inside operation workers (out/main/workers/*.worker.js),
- * so heic-decode.worker.js is in the same directory.
+ * This module may end up in a shared chunk (out/main/chunks/) when bundled
+ * by Rollup, so we cannot rely on __dirname being out/main/workers/.
+ * Instead, go up one level from __dirname and resolve into workers/.
  */
 export function getHeicDecodeWorkerPath(): string {
-  return join(__dirname, 'heic-decode.worker.js')
+  return join(__dirname, '..', 'workers', 'heic-decode.worker.js')
 }

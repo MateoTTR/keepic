@@ -263,8 +263,8 @@ parentPort.on('message', (msg) => {
 })
 
 describe('getHeicDecodeWorkerPath', () => {
-  it('returns a path ending with heic-decode.worker.js', () => {
+  it('returns a path ending with workers/heic-decode.worker.js', () => {
     const path = getHeicDecodeWorkerPath()
-    expect(path).toMatch(/heic-decode\.worker\.js$/)
+    expect(path).toMatch(/workers[/\\]heic-decode\.worker\.js$/)
   })
 })
