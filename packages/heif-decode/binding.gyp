@@ -22,7 +22,7 @@
             ["OS=='win'", {
               "libraries": [
                 "<(module_root_dir)/deps/lib/heif.lib",
-                "<(module_root_dir)/deps/lib/de265.lib"
+                "<(module_root_dir)/deps/lib/libde265.lib"
               ]
             }, {
               "libraries": [
