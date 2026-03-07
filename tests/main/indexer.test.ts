@@ -279,7 +279,7 @@ describe('runIndexer', () => {
 
   it('returns zeroes for an empty library', async () => {
     const result = await runIndexer(libraryRoot, db, () => {}, opts)
-    expect(result).toEqual({ indexed: 0, skipped: 0, deleted: 0, errors: [], skippedFiles: [] })
+    expect(result).toEqual({ indexed: 0, indexedPhotos: 0, indexedVideos: 0, skipped: 0, deleted: 0, errors: [], skippedFiles: [] })
   })
 
   it('uses default ExifLoader and PhashComputer when options are omitted', async () => {
@@ -293,6 +293,8 @@ describe('runIndexer', () => {
     buildLibrary(libraryRoot, { '2025/2025.01': ['a.jpg', 'b.jpg'] })
     const result = await runIndexer(libraryRoot, db, () => {}, opts)
     expect(result.indexed).toBe(2)
+    expect(result.indexedPhotos).toBe(2)
+    expect(result.indexedVideos).toBe(0)
     expect(result.skipped).toBe(0)
     expect(result.deleted).toBe(0)
   })
@@ -491,7 +493,7 @@ describe('runIndexer', () => {
 
   it('stores media_type as photo for image files and video for video files', async () => {
     buildLibrary(libraryRoot, { '2025/2025.01': ['photo.jpg', 'clip.mp4'] })
-    await runIndexer(libraryRoot, db, () => {}, opts)
+    const result = await runIndexer(libraryRoot, db, () => {}, opts)
 
     const photoRow = db.db
       .prepare('SELECT media_type FROM photos WHERE path = ?')
@@ -502,6 +504,9 @@ describe('runIndexer', () => {
       .prepare('SELECT media_type FROM photos WHERE path = ?')
       .get('2025/2025.01/clip.mp4') as { media_type: string }
     expect(videoRow.media_type).toBe('video')
+
+    expect(result.indexedPhotos).toBe(1)
+    expect(result.indexedVideos).toBe(1)
   })
 
   it('skips pHash computation for video files', async () => {

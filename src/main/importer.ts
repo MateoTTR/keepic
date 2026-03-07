@@ -523,7 +523,10 @@ export async function executeImportPlan(
   const entriesToProcess = plan.entries.filter(
     (e) => e.status === 'ready' || e.status === 'collision'
   )
-  const duplicateCount = plan.entries.filter((e) => e.status === 'duplicate').length
+  const duplicates = plan.entries.filter((e) => e.status === 'duplicate')
+  const duplicateCount = duplicates.length
+  const skippedPhotos = duplicates.filter((e) => e.mediaType === 'photo').length
+  const skippedVideos = duplicates.filter((e) => e.mediaType === 'video').length
   const errors: Array<{ sourcePath: string; error: string }> = []
 
   // Pre-collect planning errors
@@ -536,6 +539,8 @@ export async function executeImportPlan(
 
   const total = entriesToProcess.length
   let imported = 0
+  let importedPhotos = 0
+  let importedVideos = 0
   let status: ImportStatus = 'completed'
 
   // Initial progress: signal Phase 1 starting
@@ -653,6 +658,8 @@ export async function executeImportPlan(
         now: importedAt
       })
       imported++
+      if (result.entry.mediaType === 'video') importedVideos++
+      else importedPhotos++
     }
 
     // Report "after" progress
@@ -701,7 +708,11 @@ export async function executeImportPlan(
 
   return {
     imported,
+    importedPhotos,
+    importedVideos,
     skipped: duplicateCount,
+    skippedPhotos,
+    skippedVideos,
     livePhotosDiscarded: plan.livePhotosDiscarded,
     errors,
     status,

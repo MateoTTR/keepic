@@ -59,6 +59,8 @@ export interface IndexProgress {
 
 export interface IndexResult {
   indexed: number
+  indexedPhotos: number
+  indexedVideos: number
   skipped: number
   deleted: number
   errors: Array<{ file: string; error: string }>
@@ -110,7 +112,11 @@ export interface PlanProgress {
 
 export interface ImportResult {
   imported: number
+  importedPhotos: number
+  importedVideos: number
   skipped: number
+  skippedPhotos: number
+  skippedVideos: number
   livePhotosDiscarded: number
   errors: Array<{ sourcePath: string; error: string }>
   status: ImportStatus

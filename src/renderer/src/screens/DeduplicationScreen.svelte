@@ -32,6 +32,8 @@
   }
 
   const totalPhotos = $derived(groups.reduce((sum, g) => sum + g.photos.length, 0))
+  const photoGroups = $derived(groups.filter((g) => g.mediaType === 'photo').length)
+  const videoGroups = $derived(groups.filter((g) => g.mediaType === 'video').length)
 </script>
 
 <div class="space-y-6">
@@ -47,7 +49,7 @@
       <p class="text-gray-700">✓ No duplicates found</p>
     {:else}
       <p class="text-gray-700">
-        {groups.length} duplicate {groups.length === 1 ? 'group' : 'groups'} found ({totalPhotos} photos total)
+        {groups.length} duplicate {groups.length === 1 ? 'group' : 'groups'} found ({totalPhotos} file{totalPhotos !== 1 ? 's' : ''} total{#if videoGroups > 0 && photoGroups > 0} — {photoGroups} photo, {videoGroups} video{/if})
       </p>
 
       <hr class="border-gray-200" />
@@ -56,7 +58,7 @@
         {#each groups as group, i (group.phash)}
           <div class="space-y-2">
             <p class="text-sm font-semibold text-gray-700">
-              Group {i + 1} — {group.photos.length} identical photos
+              Group {i + 1} — {group.photos.length} identical {group.mediaType === 'video' ? 'videos' : 'photos'}
             </p>
             <div class="flex flex-wrap gap-4">
               {#each group.photos as photo (photo.path)}
