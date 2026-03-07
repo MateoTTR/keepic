@@ -7,6 +7,7 @@ import type {
   PickerMediaItem
 } from '../shared/types'
 import { listPickerMediaItems } from './google-photos-picker'
+import { withConcurrency, DEFAULT_CONCURRENCY } from './concurrency'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -41,6 +42,7 @@ export interface DownloaderDeps {
   renameFile?: (oldPath: string, newPath: string) => void
   isCancelled?: () => boolean
   listMediaItems?: ListMediaItemsFn
+  concurrency?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -261,7 +263,7 @@ export async function downloadPickerPhotos(
   } while (pageToken)
 
   // ---------------------------------------------------------------------------
-  // Phase 2: download each item
+  // Phase 2: download each item (concurrent HTTP fetches)
   // ---------------------------------------------------------------------------
 
   mkdirpFn(downloadDir)
@@ -270,15 +272,21 @@ export async function downloadPickerPhotos(
   let downloaded = 0
   const usedFilenames = new Set<string>()
   const downloadDeps = { fetch: fetchFn, writeFile: writeFileFn }
+  const concurrency = deps?.concurrency ?? DEFAULT_CONCURRENCY
 
-  for (const item of allItems) {
-    if (isCancelled()) {
-      status = 'cancelled'
-      break
-    }
-
+  // Pre-assign filenames sequentially to avoid races on usedFilenames
+  const assignments = allItems.map((item) => {
     const filename = resolveFilenameCollision(item.filename, usedFilenames)
     usedFilenames.add(filename)
+    return { item, filename }
+  })
+
+  await withConcurrency(assignments, concurrency, async ({ item, filename }) => {
+    if (isCancelled()) {
+      status = 'cancelled'
+      return
+    }
+
     const destPath = join(downloadDir, filename)
 
     onProgress({ total, downloaded, currentFile: item.filename })
@@ -306,7 +314,7 @@ export async function downloadPickerPhotos(
     }
 
     onProgress({ total, downloaded, currentFile: item.filename })
-  }
+  })
 
   return {
     status,

@@ -699,13 +699,47 @@ describe('downloadPickerPhotos', () => {
       listMediaItems: listFn
     })
 
-    // First file: IMG.HEIC written, renamed to IMG.jpg
-    //   usedFilenames after: {IMG.jpg}
-    // Second file: IMG.HEIC (no HEIC collision since IMG.HEIC was removed)
-    //   written as IMG.HEIC, corrected to IMG.jpg → collision → IMG_1.jpg
+    // Filenames are pre-assigned before download:
+    //   Item 1: IMG.HEIC, Item 2: IMG_1.HEIC (collision resolved)
+    // After download, both are JPEG content:
+    //   Item 1: IMG.HEIC → IMG.jpg
+    //   Item 2: IMG_1.HEIC → IMG_1.jpg
     expect(renamedPaths).toHaveLength(2)
     expect(renamedPaths[0]).toEqual(['/dl/IMG.HEIC', '/dl/IMG.jpg'])
-    expect(renamedPaths[1]).toEqual(['/dl/IMG.HEIC', '/dl/IMG_1.jpg'])
+    expect(renamedPaths[1]).toEqual(['/dl/IMG_1.HEIC', '/dl/IMG_1.jpg'])
+  })
+
+  it('downloads items concurrently when concurrency > 1', async () => {
+    const items = Array.from({ length: 4 }, (_, i) =>
+      makeItem({ id: `i${i}`, filename: `IMG_${i}.jpg` })
+    )
+    const listFn = makeListMediaItems([{ items }])
+    let maxConcurrent = 0
+    let currentConcurrent = 0
+
+    const mockFetch = vi.fn(async (url: string) => {
+      if (url.endsWith('=d')) {
+        currentConcurrent++
+        if (currentConcurrent > maxConcurrent) maxConcurrent = currentConcurrent
+        // Simulate async I/O delay to allow interleaving
+        await new Promise((r) => setTimeout(r, 10))
+        currentConcurrent--
+        return new Response(Buffer.from('img'), { status: 200 })
+      }
+      return new Response(JSON.stringify({}), { status: 200 })
+    })
+
+    const result = await downloadPickerPhotos('session-1', TOKENS, '/dl', vi.fn(), {
+      fetch: mockFetch,
+      writeFile: mockWriteFile,
+      mkdirp: mockMkdirp,
+      listMediaItems: listFn,
+      concurrency: 2
+    })
+
+    expect(result.status).toBe('completed')
+    expect(result.downloaded).toBe(4)
+    expect(maxConcurrent).toBe(2)
   })
 
   it('includes updatedAccessToken in failed result when refresh occurred before failure', async () => {
