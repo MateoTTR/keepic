@@ -1,4 +1,4 @@
-import { rmSync } from 'fs'
+import { rm } from 'fs/promises'
 import { Worker } from 'worker_threads'
 import type { KeePicDatabase } from '../db/database'
 import {
@@ -251,10 +251,16 @@ export function handleCancelPickerDownload(
 /**
  * Deletes the Google Photos download staging directory.
  * Called from the renderer when the user dismisses the result screen.
+ * Uses maxRetries/retryDelay to handle Windows file locks (EPERM/EBUSY).
  */
-export function handleCleanupDownloadDir(
+export async function handleCleanupDownloadDir(
   dirPath: string,
-  rmDir: (p: string) => void = (p) => rmSync(p, { recursive: true, force: true })
-): void {
-  rmDir(dirPath)
+  rmDir: (p: string) => Promise<void> = (p) =>
+    rm(p, { recursive: true, force: true, maxRetries: 3, retryDelay: 1000 })
+): Promise<void> {
+  try {
+    await rmDir(dirPath)
+  } catch {
+    // Best-effort cleanup — stale dirs handled by TASK-049 startup cleanup
+  }
 }
