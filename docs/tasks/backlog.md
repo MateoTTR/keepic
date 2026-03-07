@@ -167,7 +167,8 @@
 | # | Title | Priority | Status | Session |
 |---|---|---|---|---|
 | POC-001 | HEIC decoding benchmark PoC — compare WASM vs native strategies | P1 | `[x]` | 2026-03-07-session-038 |
-| TASK-046-perf | Native HEIC decoding via `@keepic/heif-decode` (libheif N-API addon + worker_threads) — 12.6x faster than WASM | P2 | `[ ]` | — |
+| [TASK-046-perf](TASK-046-perf-native-heic-decode.md) | Native HEIC decoding via libheif-node-dy (N-API addon + HeicDecodePool worker_threads) — 12.6x faster than WASM | P2 | `[x]` | 2026-03-07-session-044 |
+| TASK-050-feat | Package libheif as static-linked N-API addon for Electron release builds (Windows + macOS) | P2 | `[ ]` | — |
 | PERF-003 | Concurrent Google Picker downloads — apply withConcurrency to HTTP fetches (I/O-bound) | P3 | `[x]` | 2026-03-07-session-040 |
 
 ---
