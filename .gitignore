@@ -40,5 +40,8 @@ library/
 *.db-shm
 *.db-wal
 
+# Ad-hoc test scripts
+scripts/
+
 # Thumbnails cache
 .keepic/
