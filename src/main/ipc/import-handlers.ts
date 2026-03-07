@@ -141,7 +141,11 @@ export function handleExecute(
       activeWorkerRef.value = null
       onComplete({
         imported: 0,
+        importedPhotos: 0,
+        importedVideos: 0,
         skipped: 0,
+        skippedPhotos: 0,
+        skippedVideos: 0,
         livePhotosDiscarded: plan.livePhotosDiscarded,
         errors: [{ sourcePath: '', error: msg.message as string }],
         status: 'failed',
@@ -154,7 +158,11 @@ export function handleExecute(
     activeWorkerRef.value = null
     onComplete({
       imported: 0,
+      importedPhotos: 0,
+      importedVideos: 0,
       skipped: 0,
+      skippedPhotos: 0,
+      skippedVideos: 0,
       livePhotosDiscarded: plan.livePhotosDiscarded,
       errors: [{ sourcePath: '', error: err.message }],
       status: 'failed',
@@ -167,7 +175,11 @@ export function handleExecute(
       activeWorkerRef.value = null
       onComplete({
         imported: 0,
+        importedPhotos: 0,
+        importedVideos: 0,
         skipped: 0,
+        skippedPhotos: 0,
+        skippedVideos: 0,
         livePhotosDiscarded: plan.livePhotosDiscarded,
         errors: [{ sourcePath: '', error: `Worker exited unexpectedly (code ${code})` }],
         status: 'failed',
