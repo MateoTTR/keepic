@@ -191,6 +191,25 @@
 
 ---
 
+## Phase 14 — Video Support (FEAT-002)
+
+> Add video file support to KeePic: index videos in the library, import from local folder
+> and Google Picker, detect and skip Live Photo video companions (.MP4/.MOV paired with .HEIC/.JPG).
+>
+> Supported video formats: `.mp4`, `.mov`, `.avi`, `.mts`, `.3gp`, `.m4v`, `.mpg`
+> Ignored formats: `.thm`, `.flv`, `.mpo`, `.dng`, `.gif`, `.psd`, and all non-media files.
+>
+> Video deduplication uses filename + file size (no pHash for videos).
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| TASK-V01 | DB migration (`media_type` column) + shared media type helpers + extend extension sets | P1 | `[~]` | — |
+| TASK-V02 | Live Photo detection: extend to `.MP4` companions (not just `.MOV`), check `.JPG/.JPEG` siblings | P1 | `[ ]` | — |
+| TASK-V03 | Video-aware import pipeline: skip pHash for videos, filename+size dedup | P1 | `[ ]` | — |
+| TASK-V04 | Video-aware indexer + dedup scan + stats + video thumbnail placeholder | P1 | `[ ]` | — |
+
+---
+
 ## Upcoming / Not Yet Planned
 
 - In-app browse/viewer (deferred)

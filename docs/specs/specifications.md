@@ -10,7 +10,7 @@
 
 ## 1. Context & Goals
 
-KeePic is a personal desktop application (Windows 10/11 and macOS) that allows **multiple users** to import and organize photos into a **shared local library folder**. The shared folder is synchronized across machines via a Synology NAS (using Synology Drive).
+KeePic is a personal desktop application (Windows 10/11 and macOS) that allows **multiple users** to import and organize **photos and videos** into a **shared local library folder**. The shared folder is synchronized across machines via a Synology NAS (using Synology Drive).
 
 Each user runs their own instance of KeePic on their machine. The shared folder is the single source of truth for photo files. Each instance maintains its own local index (SQLite) built by scanning the shared folder.
 
@@ -27,7 +27,7 @@ Browse and visualization features are **deferred** — users can use the OS file
 - The user configures the shared library folder path once on first launch
 - The library folder is organized according to a strict naming convention (see §2.2)
 - The app **only considers folders whose name starts with a 4-digit year** (e.g. `2025`, `2026`); all other folders at the root level are ignored
-- The library folder contains **only raw photo files** — no database, thumbnails, or temp files
+- The library folder contains **only raw media files** (photos and videos) — no database, thumbnails, or temp files
 - The library folder is safe to sync with Synology Drive (append-only writes, predictable structure)
 
 ### 2.2 Folder Naming Convention
@@ -80,16 +80,16 @@ On startup (and on demand), each app instance **scans the shared library folder*
 
 - Walk all year folders (`\d{4}`) at library root
 - Walk all subfolders (monthly and event folders)
-- For each image file found: compute pHash and read EXIF → upsert into local SQLite DB
+- For each media file found: compute pHash (photos only; skipped for videos) and read EXIF/metadata → upsert into local SQLite DB with `media_type` ('photo' or 'video')
 - Files already indexed (path + mtime unchanged) are skipped for performance
 - Files removed from the shared folder (e.g., by another user) are marked as deleted in the local index
 - The local index is a **derived cache**: it can always be fully rebuilt from the shared folder
 
 The scan runs in a background worker; the UI remains usable during indexing.
 
-### 2.4 Photo Import
+### 2.4 Media Import
 
-**Import destination**: new photos are always placed in the **monthly folder** corresponding to their capture date:
+**Import destination**: new photos and videos are always placed in the **monthly folder** corresponding to their capture date:
 - Destination: `<library_root>/YYYY/YYYY.MM/<filename>`
 - The year and monthly folders are created if they do not yet exist
 - The app never moves or modifies photos already in the library
@@ -98,8 +98,10 @@ The scan runs in a background worker; the UI remains usable during indexing.
 
 Before placing a photo in the library, the app verifies:
 
-1. **Hash check**: the photo's pHash is compared against the local index. If a matching hash is found, the photo is considered a duplicate — the user is prompted (see §2.5)
-2. **Destination safety**: the target path (`YYYY/YYYY.MM/filename`) is computed deterministically from the photo's capture date; no existing file is ever overwritten without confirmation
+1. **Duplicate check**:
+   - **Photos**: the photo's pHash is compared against the local index. If a matching hash is found, the photo is considered a duplicate — the user is prompted (see §2.5)
+   - **Videos**: duplicates are detected by matching filename + file size against existing videos in the index (no pHash for videos)
+2. **Destination safety**: the target path (`YYYY/YYYY.MM/filename`) is computed deterministically from the media file's capture date; no existing file is ever overwritten without confirmation
 
 #### 2.4.2 Import from Google Photos
 
@@ -143,9 +145,11 @@ Before placing a photo in the library, the app verifies:
 
 ### 2.5 Deduplication
 
-- Before placing any photo in the library, the app checks its pHash against the local index
-- If a match is found, the user is shown a **side-by-side visual comparison** with thumbnail previews and metadata (filename, file size, dimensions, capture date), and can: skip, or import anyway
-- A standalone deduplication scan can be triggered on the existing library at any time
+- Before placing any media file in the library, the app checks for duplicates:
+  - **Photos**: pHash compared against the local index
+  - **Videos**: filename + file size compared against existing videos in the index
+- If a match is found, the user is shown a **side-by-side visual comparison** with thumbnail previews (or video placeholder icon) and metadata (filename, file size, dimensions, capture date), and can: skip, or import anyway
+- A standalone deduplication scan can be triggered on the existing library at any time (photos grouped by pHash, videos grouped by filename + file size)
 
 #### 2.5.1 Duplicate Viewer
 
@@ -180,11 +184,14 @@ Photos are organized by date of capture using the following priority chain:
 
 ### 2.7 iPhone Live Photos and HEIC Handling
 
-An iPhone Live Photo consists of: `IMG_1234.HEIC` (still) + `IMG_1234.MOV` (video clip).
+An iPhone Live Photo consists of a still image paired with a short video companion: `IMG_1234.HEIC` + `IMG_1234.MP4` (or `.MOV` on older iOS versions).
+
+**Live Photo detection**: a video file (`.mp4` or `.mov`) is classified as a Live Photo companion if a photo file with the same stem exists in the same directory (`.heic`, `.heif`, `.jpg`, or `.jpeg`). This check is case-insensitive.
 
 **Default behavior**:
-- `.HEIC` is imported and archived in the monthly folder **as-is** (no conversion)
-- `.MOV` is discarded (not imported); count shown in import summary
+- The still image (`.HEIC`) is imported and archived in the monthly folder **as-is** (no conversion)
+- The video companion (`.MP4`/`.MOV`) is discarded (not imported); count shown in import summary
+- Real videos (no sibling photo) are imported normally
 
 **HEIC mode** (configured in settings as `heic.mode`):
 
@@ -248,7 +255,7 @@ Contents:
 - Folder structure is stable and deterministic
 
 ### 3.5 Performance
-- Must handle libraries of up to 50,000 photos
+- Must handle libraries of up to 50,000 photos and 10,000 videos
 - Initial index build: background, non-blocking
 - Incremental re-index: fast (skip unchanged files by path + mtime)
 - Import pipeline runs in background workers
@@ -266,6 +273,8 @@ Contents:
 
 ### 3.8 Supported Formats
 
+**Image formats** (pHash computed for deduplication):
+
 | Format | Support |
 |---|---|
 | JPEG / JPG | Full |
@@ -273,8 +282,20 @@ Contents:
 | PNG | Full |
 | TIFF | Full |
 | RAW (CR2, NEF, ARW) | EXIF + pHash only; archived as-is |
-| MOV (Live Photo) | Discarded by default |
-| Other video | Out of scope |
+
+**Video formats** (no pHash; dedup via filename + file size):
+
+| Format | Support |
+|---|---|
+| MP4 | Full (also used as Live Photo companion — auto-detected and skipped when paired with a photo) |
+| MOV | Full |
+| AVI | Full |
+| MTS / M2TS | Full |
+| 3GP | Full |
+| M4V | Full |
+| MPG / MPEG | Full |
+
+**Ignored formats**: `.thm` (camera thumbnails), `.flv`, `.mpo`, `.dng`, `.gif`, `.psd`, and all non-media files.
 
 ---
 
@@ -285,7 +306,8 @@ Contents:
 - Mobile application
 - Multi-user coordination / conflict detection
 - Upload to Google Photos or any external service
-- Video management
+- Video transcoding or format conversion
+- Video thumbnail extraction (placeholder icon used in V1)
 - AI-based face recognition or scene detection
 - RAW file conversion
 

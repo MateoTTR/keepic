@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**KeePic** is a cross-platform desktop application (Electron, Windows + macOS) that allows multiple users to import, deduplicate, and organize their photos into a shared local library folder. The shared folder is synchronized via a Synology NAS. All photos and metadata are stored locally. There is no cloud backend.
+**KeePic** is a cross-platform desktop application (Electron, Windows + macOS) that allows multiple users to import, deduplicate, and organize their **photos and videos** into a shared local library folder. The shared folder is synchronized via a Synology NAS. All media files and metadata are stored locally. There is no cloud backend.
 
 The app is **append-only**: it never modifies or deletes files already in the shared library.
 
