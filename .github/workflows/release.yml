@@ -23,15 +23,15 @@ jobs:
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Install dependencies (skip native addon build)
+        run: npm ci --ignore-scripts
+
       - name: Build static HEIF dependencies
         shell: bash
         working-directory: packages/heif-decode
         run: bash scripts/build-deps.sh
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Rebuild HEIF addon with static linking
+      - name: Build HEIF addon with static linking
         working-directory: packages/heif-decode
         run: npx node-gyp rebuild --heif_static=true
 
@@ -62,15 +62,15 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Install dependencies (skip native addon build)
+        run: npm ci --ignore-scripts
+
       - name: Build static HEIF dependencies
         shell: bash
         working-directory: packages/heif-decode
         run: bash scripts/build-deps.sh
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Rebuild HEIF addon with static linking
+      - name: Build HEIF addon with static linking
         working-directory: packages/heif-decode
         run: npx node-gyp rebuild --heif_static=true
 
