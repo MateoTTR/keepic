@@ -1,6 +1,6 @@
 // Shared types between main process, workers, and renderer
 
-export type { MediaType } from '../media-type'
+export type MediaType = 'photo' | 'video'
 export type DateSource = 'exif' | 'filename' | 'file_mtime' | 'import'
 export type ImportSource = 'local' | 'google_photos' | 'sd_card' | 'whatsapp'
 export type ImportStatus = 'running' | 'completed' | 'failed' | 'cancelled'

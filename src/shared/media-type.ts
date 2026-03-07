@@ -1,6 +1,7 @@
 import { extname } from 'path'
+import type { MediaType } from './types'
 
-export type MediaType = 'photo' | 'video'
+export type { MediaType }
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mts', '.3gp', '.m4v', '.mpg'])
 
