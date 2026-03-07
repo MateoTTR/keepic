@@ -141,8 +141,8 @@
 |---|---|---|---|---|
 | [TASK-041](TASK-041-fix-progress-phase1.md) | Fix missing progress during Phase 1 — UI stuck on "Starting..." (indexer, planner, executor) | P0 | `[x]` | 2026-03-07-session-036 |
 | [TASK-042](TASK-042-fix-picker-heic-jpeg.md) | Fix Google Picker HEIC files served as JPEG — detect magic bytes, rename extension | P0 | `[x]` | 2026-03-07-session-036 |
-| TASK-043 | Display elapsed time in operation reports (re-index, analysis, import) | P3 | `[ ]` | — |
-| TASK-044 | Add HEIC keep/convert option to settings UI | P3 | `[ ]` | — |
+| [TASK-043](TASK-043-elapsed-time-reports.md) | Display elapsed time in operation reports (re-index, analysis, import) | P3 | `[x]` | 2026-03-07-session-037 |
+| [TASK-044](TASK-044-heic-settings-ui.md) | Add HEIC keep/convert option to settings UI | P3 | `[x]` | 2026-03-07-session-037 |
 
 ---
 

@@ -20,6 +20,15 @@ export function handleGetConfig(configManager: ConfigManager): AppConfig {
   return configManager.get()
 }
 
+/** Updates the HEIC configuration and persists immediately. */
+export function handleSetHeicConfig(
+  configManager: ConfigManager,
+  heic: AppConfig['heic']
+): AppConfig {
+  configManager.setHeicConfig(heic)
+  return configManager.get()
+}
+
 /**
  * Validates that the given path exists and is a directory.
  * Returns { valid: true } or { valid: false, error: string }.

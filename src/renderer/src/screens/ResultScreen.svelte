@@ -2,14 +2,16 @@
   import type { ImportResult } from '../../../shared/types'
   import Button from '../components/ui/Button.svelte'
   import Separator from '../components/ui/Separator.svelte'
+  import { formatElapsed } from '../utils'
 
   interface Props {
     result: ImportResult | null
+    elapsedMs: number
     onImportMore: () => void
     onDone: () => void
   }
 
-  let { result, onImportMore, onDone }: Props = $props()
+  let { result, elapsedMs, onImportMore, onDone }: Props = $props()
 
   const statusLabel = $derived(() => {
     if (!result) return 'Import complete'
@@ -27,7 +29,12 @@
 </script>
 
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-8 space-y-6">
-  <h2 class="text-xl font-semibold {statusClass()}">{statusLabel()}</h2>
+  <h2 class="text-xl font-semibold {statusClass()}">
+    {statusLabel()}
+    {#if elapsedMs > 0}
+      <span class="text-sm font-normal text-gray-400 ml-2">in {formatElapsed(elapsedMs)}</span>
+    {/if}
+  </h2>
 
   {#if result}
     <div class="space-y-1 text-sm text-gray-700">

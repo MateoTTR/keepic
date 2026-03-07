@@ -2,13 +2,15 @@
   import { onMount } from 'svelte'
   import Button from '../components/ui/Button.svelte'
   import StatsPanel from '../components/StatsPanel.svelte'
-  import type { GoogleAuthStatus, LibraryStats } from '../../../shared/types'
+  import type { AppConfig, GoogleAuthStatus, LibraryStats } from '../../../shared/types'
 
   interface Props {
     libraryPath: string | null
+    heicMode: AppConfig['heic']['mode']
     sourceFolder: string
     googleAuthStatus: GoogleAuthStatus | null
     onLibraryPathChange: (path: string) => void
+    onHeicModeChange: (mode: AppConfig['heic']['mode']) => void
     onSourceFolder: (folder: string) => void
     onAnalyse: () => void
     onGoogleImport: () => void
@@ -17,7 +19,7 @@
     onReindex: () => void
   }
 
-  let { libraryPath, sourceFolder, googleAuthStatus, onLibraryPathChange, onSourceFolder, onAnalyse, onGoogleImport, onGoogleAuthChange, onDedupScan, onReindex }: Props = $props()
+  let { libraryPath, heicMode, sourceFolder, googleAuthStatus, onLibraryPathChange, onHeicModeChange, onSourceFolder, onAnalyse, onGoogleImport, onGoogleAuthChange, onDedupScan, onReindex }: Props = $props()
 
   let connecting: boolean = $state(false)
   let connectError: string | null = $state(null)
@@ -26,6 +28,11 @@
   onMount(async () => {
     stats = await window.keepic.library.getStats()
   })
+
+  async function setHeicMode(mode: AppConfig['heic']['mode']): Promise<void> {
+    const updated = await window.keepic.config.setHeicConfig({ mode, jpegQuality: 90 })
+    onHeicModeChange(updated.heic.mode)
+  }
 
   async function configureLibraryFolder(): Promise<void> {
     const result = await window.keepic.config.selectLibraryFolder()
@@ -140,6 +147,37 @@
       <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Library</p>
       <Button variant="outline" onclick={onDedupScan}>Scan for duplicates</Button>
       <Button variant="outline" onclick={onReindex}>Re-index library</Button>
+    </div>
+
+    <hr class="border-gray-200" />
+
+    <!-- Settings section -->
+    <div class="space-y-3">
+      <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Settings</p>
+      <div class="flex items-center gap-3">
+        <span class="text-sm text-gray-700">HEIC files:</span>
+        <div class="inline-flex rounded-md shadow-sm" role="group">
+          <button
+            class="px-3 py-1.5 text-sm font-medium rounded-l-md border {heicMode === 'keep' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}"
+            onclick={() => setHeicMode('keep')}
+          >
+            Keep original
+          </button>
+          <button
+            class="px-3 py-1.5 text-sm font-medium rounded-r-md border border-l-0 {heicMode === 'convert' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}"
+            onclick={() => setHeicMode('convert')}
+          >
+            Convert to JPEG
+          </button>
+        </div>
+      </div>
+      <p class="text-xs text-gray-400">
+        {#if heicMode === 'keep'}
+          HEIC photos are imported as-is. Not all viewers support this format.
+        {:else}
+          HEIC photos are converted to JPEG during import (quality 90%).
+        {/if}
+      </p>
     </div>
   </div>
 

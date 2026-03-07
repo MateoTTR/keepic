@@ -4,7 +4,11 @@ import { Worker } from 'worker_threads'
 import { is } from '@electron-toolkit/utils'
 import { ConfigManager } from './config'
 import { KeePicDatabase } from './db/database'
-import { handleGetConfig, handleSelectLibraryFolder } from './ipc/config-handlers'
+import {
+  handleGetConfig,
+  handleSelectLibraryFolder,
+  handleSetHeicConfig
+} from './ipc/config-handlers'
 import {
   handleSelectSourceFolder,
   handlePlan,
@@ -24,7 +28,7 @@ import {
   handleCancelPickerDownload,
   type ActivePickerWorkerRef
 } from './ipc/google-photos-handlers'
-import type { ImportPlan } from '../shared/types'
+import type { AppConfig, ImportPlan } from '../shared/types'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -84,6 +88,10 @@ app.whenReady().then(() => {
   // --- Config IPC ---
 
   ipcMain.handle('config:get', () => handleGetConfig(configManager))
+
+  ipcMain.handle('config:set-heic-config', (_event, { heic }: { heic: AppConfig['heic'] }) =>
+    handleSetHeicConfig(configManager, heic)
+  )
 
   ipcMain.handle('config:select-library-folder', async () => {
     const result = await handleSelectLibraryFolder(
