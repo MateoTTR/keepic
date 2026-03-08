@@ -1,0 +1,88 @@
+# TASK-064-fix — Improve pHash deduplication robustness
+
+## Context
+
+Manual testing with real-world photos revealed two classes of pHash issues:
+
+### Case 1 — False negative: same photo in HEIC and JPEG not detected as duplicate
+
+The same photo exists as `IMG_2505.HEIC` (24MP, 4284×5712) and `IMG_2505.jpg`. Their pHash values differ by **1 bit** (Hamming distance = 1):
+
+```
+HEIC: ff00802080008080
+JPG:  ff00800080008080
+```
+
+**Root cause**: HEIC decoding (libheif, HEVC tile grid) and JPEG decoding (libjpeg via sharp) produce slightly different sub-pixel values. After resize to 32×32 and DCT, this micro-difference flips 1 bit.
+
+**Current behavior**: KeePic uses exact pHash equality (`WHERE phash = ?`), so this 1-bit difference causes a miss.
+
+### Case 2 — False positive: two different photos produce the same pHash
+
+`Arès 149.jpg` (2048×1536) and `IMG_3564.JPG` (1704×2272) are completely different photos but share the same pHash:
+
+```
+Both: 8080808000000080
+```
+
+**Root cause**: DCT hash collision. The 64-bit hash space has non-uniform distribution — some hashes are "attractors" that many structurally different images converge to. This hash has only 7 bits set out of 64, indicating both images have a very flat frequency distribution after 32×32 greyscale reduction.
+
+## Proposed fix
+
+Both problems must be addressed together, as relaxing the match threshold (to fix case 1) would increase false positives (case 2).
+
+### Option A — Hamming tolerance + secondary criteria (recommended)
+
+1. **Replace exact match with Hamming distance ≤ N** (e.g., N=4) in the dedup query
+2. **Add secondary confirmation criteria** to filter out false positives:
+   - Same aspect ratio (within tolerance, e.g., ±5%)
+   - Similar file size (within tolerance, e.g., ±50%)
+   - Or: same image dimensions
+
+The dedup query would become something like:
+```sql
+-- For each candidate, find potential duplicates
+SELECT path, phash, width, height, file_size
+FROM photos
+WHERE deleted_at IS NULL
+  AND phash IS NOT NULL
+```
+
+Then compute Hamming distance in JS (SQLite doesn't have bit operations on hex strings) and apply secondary filters.
+
+**Trade-off**: more complex query, slightly slower (need to scan all non-null pHash rows), but much more accurate.
+
+### Option B — Larger hash (128-bit)
+
+Increase `HASH_SIZE` from 8 to 12 (144 coefficients → 144-bit hash). Reduces collision probability but:
+- Requires DB migration (wider column)
+- Requires full re-index to recompute all hashes
+- Doesn't fully solve cross-format 1-bit differences
+
+### Option C — Hybrid (recommended long-term)
+
+Combine Option A (Hamming tolerance + secondary criteria) with a modestly larger hash (e.g., 10×10 = 100 bits). Best of both worlds.
+
+## Deliverables
+
+- [ ] Decide on approach (A, B, or C)
+- [ ] Update dedup logic in `buildImportPlan` (planner) and `runDeduplicationScan` (scan handler)
+- [ ] Add secondary criteria (dimensions / aspect ratio / file size)
+- [ ] Update tests with cross-format and collision test cases
+- [ ] Consider performance impact of non-exact matching
+
+## Test samples
+
+Saved in `/tmp/phash/` (not committed):
+- `case_1/IMG_2505.HEIC` + `case_1/IMG_2505.jpg` — same photo, Hamming distance 1
+- `case_2/Arès 149.jpg` + `case_2/IMG_3564.JPG` — different photos, Hamming distance 0
+
+## Files likely to change
+
+| File | Change |
+|------|--------|
+| `src/main/importer.ts` | Update dedup query in `buildImportPlan` phase 2 |
+| `src/main/ipc/dedup-scan-handler.ts` | Update dedup scan logic |
+| `src/main/phash.ts` | Possibly increase hash size |
+| `tests/main/importer.test.ts` | Add cross-format and collision test cases |
+| `tests/main/ipc/dedup-scan-handler.test.ts` | Update dedup tests |
