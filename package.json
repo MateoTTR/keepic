@@ -66,6 +66,7 @@
       "node_modules/better-sqlite3/**",
       "node_modules/keytar/**",
       "node_modules/sharp/**",
+      "node_modules/@img/**",
       "node_modules/@keepic/heif-decode/**"
     ],
     "win": {
