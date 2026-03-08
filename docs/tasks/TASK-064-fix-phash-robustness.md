@@ -63,11 +63,28 @@ Increase `HASH_SIZE` from 8 to 12 (144 coefficients → 144-bit hash). Reduces c
 
 Combine Option A (Hamming tolerance + secondary criteria) with a modestly larger hash (e.g., 10×10 = 100 bits). Best of both worlds.
 
+### Note on dimension-based filtering
+
+Case 3 shows that `DSC01442.JPG` and `DSC01445.JPG` have the **same dimensions** (6000×4000) and the same pHash — so dimension matching alone cannot filter all false positives. Additional perceptual metrics are needed.
+
+## Research: complementary similarity techniques
+
+Before implementation, research alternative/complementary perceptual hashing and similarity techniques to strengthen deduplication beyond DCT pHash alone. Candidates to evaluate:
+
+- **dHash** (difference hash) — encodes horizontal gradients, orthogonal to DCT frequency analysis
+- **aHash** (average hash) — simple threshold against mean brightness
+- **Color histogram comparison** — captures color distribution, insensitive to spatial layout
+- **SSIM** (Structural Similarity Index) — pixel-level structural comparison on thumbnails
+- **Feature-based matching** (ORB, SIFT descriptors) — more robust but heavier
+
+The goal is to combine 2-3 independent metrics so that a "match" requires agreement across multiple signals, reducing false positives without sacrificing cross-format detection (case 1).
+
 ## Deliverables
 
-- [ ] Decide on approach (A, B, or C)
+- [ ] Research complementary perceptual similarity techniques (bibliography)
+- [ ] Decide on approach (A, B, or C) and which secondary metrics to use
 - [ ] Update dedup logic in `buildImportPlan` (planner) and `runDeduplicationScan` (scan handler)
-- [ ] Add secondary criteria (dimensions / aspect ratio / file size)
+- [ ] Add secondary criteria (dimensions / aspect ratio / file size / additional hash)
 - [ ] Update tests with cross-format and collision test cases
 - [ ] Consider performance impact of non-exact matching
 
