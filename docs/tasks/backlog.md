@@ -287,6 +287,8 @@
 |---|---|---|---|---|
 | [TASK-058-feat](TASK-058-feat-purge-db-on-library-change.md) | Purge database (photos + import_jobs) when library path changes | P3 | `[x]` | 2026-03-08-session-052 |
 | [TASK-059-feat](TASK-059-feat-tabbed-ui.md) | Refactor UI with tabbed navigation (Library / Import / Settings) | P2 | `[ ]` | — |
+| [TASK-060-fix](TASK-060-fix-mov-live-photo-detection.md) | Fix MOV files incorrectly detected as Live Photo companions — only MP4 should match | P1 | `[ ]` | — |
+| [TASK-061-fix](TASK-061-fix-heic-jpeg-magic-bytes.md) | Handle `.HEIC` files that are actually JPEG (magic bytes detection) — 4841 errors on real library | P0 | `[ ]` | — |
 
 ---
 
