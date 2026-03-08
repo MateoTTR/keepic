@@ -295,6 +295,7 @@ describe('createHeicConverter', () => {
 describe('createUniversalPhashComputer', () => {
   const mockSharpPhash: PhashComputer = async (filePath: string): Promise<PhashResult> => ({
     phash: Buffer.from(filePath).toString('hex').slice(0, 16).padEnd(16, '0'),
+    dhash: Buffer.from(filePath).toString('hex').slice(16, 32).padEnd(16, '0'),
     width: 100,
     height: 80
   })
@@ -340,6 +341,7 @@ describe('createUniversalPhashComputer', () => {
     expect(readPath).toBe('/photos/IMG_1234.heic')
     expect(result).not.toBeNull()
     expect(result!.phash).toMatch(/^[0-9a-f]{16}$/)
+    expect(result!.dhash).toMatch(/^[0-9a-f]{16}$/)
     expect(result!.width).toBe(w)
     expect(result!.height).toBe(h)
   })
@@ -410,7 +412,7 @@ describe('createUniversalPhashComputer', () => {
     let sharpPhashPath: string | null = null
     const mockSharpPhash2: PhashComputer = async (filePath: string): Promise<PhashResult> => {
       sharpPhashPath = filePath
-      return { phash: 'abcdef0123456789', width: 200, height: 150 }
+      return { phash: 'abcdef0123456789', dhash: '9876543210fedcba', width: 200, height: 150 }
     }
     // JPEG magic bytes
     const jpegBuffer = Buffer.alloc(100)

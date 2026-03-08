@@ -85,6 +85,7 @@ export interface ImportPlanEntry {
   dateTaken: string
   dateTakenSource: DateSource
   phash: string | null
+  dhash: string | null
   width: number | null
   height: number | null
   fileSize: number

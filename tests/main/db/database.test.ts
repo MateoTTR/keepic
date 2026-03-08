@@ -74,6 +74,14 @@ describe('KeePicDatabase', () => {
       kdb.close()
     })
 
+    it('adds the dhash column to photos', () => {
+      const kdb = new KeePicDatabase(':memory:')
+      kdb.open()
+      const cols = kdb.db.prepare("PRAGMA table_info('photos')").all() as { name: string }[]
+      expect(cols.some((c) => c.name === 'dhash')).toBe(true)
+      kdb.close()
+    })
+
     it('creates the import_jobs table', () => {
       const kdb = new KeePicDatabase(':memory:')
       kdb.open()
@@ -96,7 +104,7 @@ describe('KeePicDatabase', () => {
       const kdb = new KeePicDatabase(':memory:')
       kdb.open()
       const version = kdb.db.pragma('user_version', { simple: true })
-      expect(version).toBe(4)
+      expect(version).toBe(5)
       kdb.close()
     })
 
@@ -112,7 +120,7 @@ describe('KeePicDatabase', () => {
         const kdb2 = new KeePicDatabase(path)
         kdb2.open()
         const version = kdb2.db.pragma('user_version', { simple: true })
-        expect(version).toBe(4)
+        expect(version).toBe(5)
         kdb2.close()
       } finally {
         cleanup(path)
