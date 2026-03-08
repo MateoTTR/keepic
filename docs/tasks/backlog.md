@@ -241,7 +241,7 @@
 | # | Title | Priority | Status | Session |
 |---|---|---|---|---|
 | TASK-047-fix | Fix `plan.skippedFiles is not iterable` — skippedFiles not propagated through UI flow (PlanningScreen -> App -> ExecutionScreen) | P0 | `[x]` | 2026-03-07-session-043 |
-| [TASK-048-feat](TASK-048-feat-live-photo-reindex.md) | Detect and exclude Live Photo video companions during library re-index (consistent with import behavior) | P3 | `[ ]` | — |
+| [TASK-048-feat](TASK-048-feat-live-photo-reindex.md) | Detect and exclude Live Photo video companions during library re-index (consistent with import behavior) | P3 | `[x]` | 2026-03-08-session-050 |
 | [TASK-049-fix](TASK-049-fix-temp-dir-cleanup.md) | Cleanup stale temp directories on app startup (`temp/import-*`, `picker-staging/*` in userData) | P3 | `[x]` | 2026-03-08-session-049 |
 
 ---
