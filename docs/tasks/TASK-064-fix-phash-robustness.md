@@ -71,11 +71,27 @@ Combine Option A (Hamming tolerance + secondary criteria) with a modestly larger
 - [ ] Update tests with cross-format and collision test cases
 - [ ] Consider performance impact of non-exact matching
 
+### Case 3 — False positive: three different photos all produce the same pHash
+
+`DSC01442.JPG` (6000×4000), `DSC01445.JPG` (6000×4000) and `Italie024.JPG` (2048×1536) are three different photos that all share the same pHash:
+
+```
+All three: 8080808080808080
+```
+
+This is the most "flat" possible hash (alternating 1/0 pattern), another strong DCT attractor. All three pairwise Hamming distances are 0.
+
 ## Test samples
 
-Saved in `/tmp/phash/` (not committed):
-- `case_1/IMG_2505.HEIC` + `case_1/IMG_2505.jpg` — same photo, Hamming distance 1
-- `case_2/Arès 149.jpg` + `case_2/IMG_3564.JPG` — different photos, Hamming distance 0
+Saved in `~/heic-decode-poc/samples/phash/` (separate repo, not committed to KeePic):
+
+| Case | Expected | Files | pHash | Hamming |
+|------|----------|-------|-------|---------|
+| case_1 | **Duplicates** (same photo, different format) | `IMG_2505.HEIC` + `IMG_2505.jpg` | `ff00802080008080` / `ff00800080008080` | 1 |
+| case_2 | **Not duplicates** (different photos) | `Arès 149.jpg` + `IMG_3564.JPG` | both `8080808000000080` | 0 |
+| case_3 | **Not duplicates** (3 different photos) | `DSC01442.JPG` + `DSC01445.JPG` + `Italie024.JPG` | all `8080808080808080` | 0 |
+
+The fix must pass all three cases: detect case_1 as duplicate, and reject case_2 and case_3 as non-duplicates.
 
 ## Files likely to change
 
