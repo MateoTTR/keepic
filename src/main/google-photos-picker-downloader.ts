@@ -1,4 +1,4 @@
-import { writeFileSync, mkdirSync, renameSync } from 'fs'
+import { writeFileSync, mkdirSync, renameSync, utimesSync } from 'fs'
 import { join, extname, basename } from 'path'
 import type {
   GoogleDownloadProgress,
@@ -40,6 +40,7 @@ export interface DownloaderDeps {
   writeFile?: (path: string, data: Buffer) => void
   mkdirp?: (path: string) => void
   renameFile?: (oldPath: string, newPath: string) => void
+  setFileTimes?: (path: string, atime: Date, mtime: Date) => void
   isCancelled?: () => boolean
   listMediaItems?: ListMediaItemsFn
   concurrency?: number
@@ -92,21 +93,25 @@ export function fixHeicJpegExtension(filename: string, data: Buffer): string {
 
 /**
  * Downloads the original file for one media item to destPath.
- * Appends '=d' to the baseUrl to request the original quality file.
+ * Appends '=d' for photos or '=dv' for videos to the baseUrl.
+ * Sets the file mtime to the item's creationTime when available.
  * Returns the downloaded buffer for post-processing (e.g. magic bytes check).
  */
 export async function downloadMediaItem(
   item: PickerMediaItem,
   accessToken: string,
   destPath: string,
-  deps?: Pick<DownloaderDeps, 'fetch' | 'writeFile'>
+  deps?: Pick<DownloaderDeps, 'fetch' | 'writeFile' | 'setFileTimes'>
 ): Promise<Buffer> {
   /* v8 ignore next */
   const fetchFn = deps?.fetch ?? globalThis.fetch
   /* v8 ignore next */
   const writeFileFn = deps?.writeFile ?? ((p: string, d: Buffer) => writeFileSync(p, d))
+  /* v8 ignore next */
+  const setFileTimesFn = deps?.setFileTimes ?? ((p: string, a: Date, m: Date) => utimesSync(p, a, m))
 
-  const response = await fetchFn(`${item.baseUrl}=d`, {
+  const suffix = item.mimeType.startsWith('video/') ? '=dv' : '=d'
+  const response = await fetchFn(`${item.baseUrl}${suffix}`, {
     headers: { Authorization: `Bearer ${accessToken}` }
   })
 
@@ -116,6 +121,14 @@ export async function downloadMediaItem(
 
   const buffer = Buffer.from(await response.arrayBuffer())
   writeFileFn(destPath, buffer)
+
+  if (item.mediaMetadata.creationTime) {
+    const captureDate = new Date(item.mediaMetadata.creationTime)
+    if (!isNaN(captureDate.getTime())) {
+      setFileTimesFn(destPath, captureDate, captureDate)
+    }
+  }
+
   return buffer
 }
 
@@ -187,6 +200,9 @@ export async function downloadPickerPhotos(
   const mkdirpFn = deps?.mkdirp ?? ((p: string) => mkdirSync(p, { recursive: true }))
   /* v8 ignore next */
   const renameFileFn = deps?.renameFile ?? ((o: string, n: string) => renameSync(o, n))
+  /* v8 ignore next 2 */
+  const setFileTimesFn =
+    deps?.setFileTimes ?? ((p: string, a: Date, m: Date) => utimesSync(p, a, m))
   /* v8 ignore next */
   const isCancelled = deps?.isCancelled ?? (() => false)
   /* v8 ignore next */
@@ -271,7 +287,7 @@ export async function downloadPickerPhotos(
   const total = allItems.length
   let downloaded = 0
   const usedFilenames = new Set<string>()
-  const downloadDeps = { fetch: fetchFn, writeFile: writeFileFn }
+  const downloadDeps = { fetch: fetchFn, writeFile: writeFileFn, setFileTimes: setFileTimesFn }
   const concurrency = deps?.concurrency ?? DEFAULT_CONCURRENCY
 
   // Pre-assign filenames sequentially to avoid races on usedFilenames
