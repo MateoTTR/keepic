@@ -290,6 +290,7 @@
 | [TASK-060-fix](TASK-060-fix-mov-live-photo-detection.md) | Fix MOV files incorrectly detected as Live Photo companions — only MP4 should match | P1 | `[x]` | 2026-03-08-session-053 |
 | [TASK-061-fix](TASK-061-fix-heic-jpeg-magic-bytes.md) | Handle `.HEIC` files that are actually JPEG (magic bytes detection) — 4841 errors on real library | P0 | `[x]` | 2026-03-08-session-053 |
 | [TASK-062-fix](TASK-062-fix-cross-device-rename.md) | Fix EXDEV cross-device rename error during import (temp on C: → library on D:) | P0 | `[x]` | 2026-03-08-session-054 |
+| [TASK-063-feat](TASK-063-feat-import-history-details.md) | Enrich import history with source and date range of imported media | P3 | `[ ]` | — |
 
 ---
 
