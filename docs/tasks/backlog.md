@@ -264,8 +264,8 @@
 
 | # | Title | Priority | Status | Session |
 |---|---|---|---|---|
-| [TASK-054-fix](TASK-054-fix-picker-video-download.md) | Fix Google Picker video download — truncated files (`=d` instead of `=dv`) + wrong date (mtime fallback) | P0 | `[ ]` | — |
-| [TASK-055-feat](TASK-055-feat-app-icon.md) | Add application icon (taskbar, shortcut, title bar) | P3 | `[ ]` | — |
+| [TASK-054-fix](TASK-054-fix-picker-video-download.md) | Fix Google Picker video download — truncated files (`=d` instead of `=dv`) + wrong date (mtime fallback) | P0 | `[x]` | 2026-03-08-session-051 |
+| [TASK-055-feat](TASK-055-feat-app-icon.md) | Add application icon (taskbar, shortcut, title bar) | P3 | `[x]` | 2026-03-08-session-051 |
 
 ---
 
