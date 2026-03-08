@@ -711,6 +711,32 @@ describe('executeImportPlan', () => {
     expect(photos[0].phash).toBe('abc123')
   })
 
+  it('sets job_id on imported photos linking them to the import job', async () => {
+    const plan = makePlan([readyEntry(), readyEntry({
+      sourcePath: '/source/photo2.jpg',
+      destinationRelativePath: '2024/2024.06/photo2.jpg',
+      phash: 'def456'
+    })])
+    await executeImportPlan(plan, libraryDir, tempDir, db, baseConfig, noop, {
+      copyFile: noop,
+      moveFile: noop,
+      mkdirp: noop,
+      statFile: mockStat,
+      rmTempDir: noop
+    })
+
+    const jobs = getAllJobs(db)
+    expect(jobs).toHaveLength(1)
+
+    const jobRow = db.db.prepare('SELECT id FROM import_jobs LIMIT 1').get() as { id: number }
+    const photos = db.db
+      .prepare('SELECT path, job_id FROM photos ORDER BY path')
+      .all() as Array<{ path: string; job_id: number | null }>
+    expect(photos).toHaveLength(2)
+    expect(photos[0].job_id).toBe(jobRow.id)
+    expect(photos[1].job_id).toBe(jobRow.id)
+  })
+
   it('stores media_type as video when importing a video entry', async () => {
     const plan = makePlan([
       readyEntry({

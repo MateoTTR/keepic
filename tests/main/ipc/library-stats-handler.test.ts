@@ -25,6 +25,7 @@ function insertPhoto(
     fileSize?: number | null
     deletedAt?: string | null
     mediaType?: string
+    jobId?: number | null
   } = {}
 ): void {
   const path = overrides.path ?? `/lib/${Math.random()}.jpg`
@@ -33,14 +34,15 @@ function insertPhoto(
   const fileSize = 'fileSize' in overrides ? overrides.fileSize : 1024
   const deletedAt = overrides.deletedAt ?? null
   const mediaType = overrides.mediaType ?? 'photo'
+  const jobId = overrides.jobId ?? null
 
   db.db
     .prepare(
       `INSERT INTO photos
-         (path, filename, source, imported_at, created_at, date_taken, file_size, deleted_at, media_type)
-       VALUES (?, ?, 'local', '2025-01-01T00:00:00Z', '2025-01-01T00:00:00Z', ?, ?, ?, ?)`
+         (path, filename, source, imported_at, created_at, date_taken, file_size, deleted_at, media_type, job_id)
+       VALUES (?, ?, 'local', '2025-01-01T00:00:00Z', '2025-01-01T00:00:00Z', ?, ?, ?, ?, ?)`
     )
-    .run(path, filename, dateTaken, fileSize, deletedAt, mediaType)
+    .run(path, filename, dateTaken, fileSize, deletedAt, mediaType, jobId)
 }
 
 function insertJob(
@@ -53,7 +55,7 @@ function insertJob(
     photosImported?: number
     photosSkipped?: number
   } = {}
-): void {
+): number {
   const source = overrides.source ?? 'local'
   const startedAt = overrides.startedAt ?? '2025-01-01T00:00:00Z'
   const finishedAt = 'finishedAt' in overrides ? overrides.finishedAt : '2025-01-01T01:00:00Z'
@@ -61,7 +63,7 @@ function insertJob(
   const photosImported = overrides.photosImported ?? 0
   const photosSkipped = overrides.photosSkipped ?? 0
 
-  db.db
+  const result = db.db
     .prepare(
       `INSERT INTO import_jobs
          (source, started_at, finished_at, status, photos_imported, photos_skipped,
@@ -69,6 +71,7 @@ function insertJob(
        VALUES (?, ?, ?, ?, ?, ?, 0)`
     )
     .run(source, startedAt, finishedAt, status, photosImported, photosSkipped)
+  return result.lastInsertRowid as number
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +190,53 @@ describe('handleGetLibraryStats', () => {
     expect(stats.recentImports[0].photosImported).toBe(7)
   })
 
+  it('recentImports includes oldestMediaDate and newestMediaDate from linked photos', () => {
+    const db = makeDb()
+    const jobId = insertJob(db, {
+      startedAt: '2025-06-01T00:00:00Z',
+      finishedAt: '2025-06-01T01:00:00Z',
+      photosImported: 3
+    })
+    insertPhoto(db, { path: '/a.jpg', dateTaken: '2024-01-15', jobId })
+    insertPhoto(db, { path: '/b.jpg', dateTaken: '2024-06-20', jobId })
+    insertPhoto(db, { path: '/c.jpg', dateTaken: '2025-03-10', jobId })
+    const stats = handleGetLibraryStats(db)
+    expect(stats.recentImports).toHaveLength(1)
+    expect(stats.recentImports[0].oldestMediaDate).toBe('2024-01-15')
+    expect(stats.recentImports[0].newestMediaDate).toBe('2025-03-10')
+  })
+
+  it('recentImports returns null dates when job has no linked photos', () => {
+    const db = makeDb()
+    insertJob(db, {
+      startedAt: '2025-06-01T00:00:00Z',
+      finishedAt: '2025-06-01T01:00:00Z',
+      photosImported: 5
+    })
+    const stats = handleGetLibraryStats(db)
+    expect(stats.recentImports[0].oldestMediaDate).toBeNull()
+    expect(stats.recentImports[0].newestMediaDate).toBeNull()
+  })
+
+  it('recentImports excludes deleted photos from date range computation', () => {
+    const db = makeDb()
+    const jobId = insertJob(db, {
+      startedAt: '2025-06-01T00:00:00Z',
+      finishedAt: '2025-06-01T01:00:00Z',
+      photosImported: 2
+    })
+    insertPhoto(db, { path: '/a.jpg', dateTaken: '2024-01-01', jobId })
+    insertPhoto(db, {
+      path: '/b.jpg',
+      dateTaken: '2025-12-31',
+      jobId,
+      deletedAt: '2025-06-02T00:00:00Z'
+    })
+    const stats = handleGetLibraryStats(db)
+    expect(stats.recentImports[0].oldestMediaDate).toBe('2024-01-01')
+    expect(stats.recentImports[0].newestMediaDate).toBe('2024-01-01')
+  })
+
   it('counts photos and videos separately in totalPhotos and totalVideos', () => {
     const db = makeDb()
     insertPhoto(db, { path: '/a.jpg', dateTaken: '2025-01-01', fileSize: 100, mediaType: 'photo' })
@@ -213,28 +263,35 @@ describe('handleGetLibraryStats', () => {
 
   it('mix of local and google_photos sources: both appear correctly in recentImports', () => {
     const db = makeDb()
-    insertJob(db, {
+    const localJobId = insertJob(db, {
       source: 'local',
       startedAt: '2025-01-01T00:00:00Z',
       finishedAt: '2025-01-01T01:00:00Z',
       photosImported: 10,
       photosSkipped: 2
     })
-    insertJob(db, {
+    const googleJobId = insertJob(db, {
       source: 'google_photos',
       startedAt: '2025-02-01T00:00:00Z',
       finishedAt: '2025-02-01T01:00:00Z',
       photosImported: 50,
       photosSkipped: 5
     })
+    insertPhoto(db, { path: '/local1.jpg', dateTaken: '2024-03-01', jobId: localJobId })
+    insertPhoto(db, { path: '/google1.jpg', dateTaken: '2023-11-15', jobId: googleJobId })
+    insertPhoto(db, { path: '/google2.jpg', dateTaken: '2024-05-20', jobId: googleJobId })
     const stats = handleGetLibraryStats(db)
     expect(stats.recentImports).toHaveLength(2)
     // newest first
     expect(stats.recentImports[0].source).toBe('google_photos')
     expect(stats.recentImports[0].photosImported).toBe(50)
     expect(stats.recentImports[0].photosSkipped).toBe(5)
+    expect(stats.recentImports[0].oldestMediaDate).toBe('2023-11-15')
+    expect(stats.recentImports[0].newestMediaDate).toBe('2024-05-20')
     expect(stats.recentImports[1].source).toBe('local')
     expect(stats.recentImports[1].photosImported).toBe(10)
     expect(stats.recentImports[1].photosSkipped).toBe(2)
+    expect(stats.recentImports[1].oldestMediaDate).toBe('2024-03-01')
+    expect(stats.recentImports[1].newestMediaDate).toBe('2024-03-01')
   })
 })
