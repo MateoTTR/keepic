@@ -258,6 +258,17 @@
 
 ---
 
+## Phase 18 — v0.3.3 Bug Fixes & Improvements
+
+> Bugs found during manual testing of v0.3.3 (2026-03-08).
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| [TASK-054-fix](TASK-054-fix-picker-video-download.md) | Fix Google Picker video download — truncated files (`=d` instead of `=dv`) + wrong date (mtime fallback) | P0 | `[ ]` | — |
+| [TASK-055-feat](TASK-055-feat-app-icon.md) | Add application icon (taskbar, shortcut, title bar) | P3 | `[ ]` | — |
+
+---
+
 ## Upcoming / Not Yet Planned
 
 - In-app browse/viewer (deferred)
