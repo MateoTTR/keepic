@@ -21,6 +21,16 @@
   function formatDate(iso: string): string {
     return new Date(iso).toLocaleDateString()
   }
+
+  function formatMediaDateRange(oldest: string | null, newest: string | null): string | null {
+    if (!oldest || !newest) return null
+    const oldDate = new Date(oldest)
+    const newDate = new Date(newest)
+    const oldMonth = oldDate.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+    const newMonth = newDate.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+    if (oldMonth === newMonth) return oldMonth
+    return `${oldMonth} – ${newMonth}`
+  }
 </script>
 
 {#if stats !== null}
@@ -53,6 +63,9 @@
             <span class="text-gray-700">{formatSource(imp.source)}</span>
             <span class="text-gray-400">{formatDate(imp.finishedAt)}</span>
             <span class="text-gray-700">+{imp.photosImported} photos</span>
+            {#if formatMediaDateRange(imp.oldestMediaDate, imp.newestMediaDate)}
+              <span class="text-gray-400 text-xs">{formatMediaDateRange(imp.oldestMediaDate, imp.newestMediaDate)}</span>
+            {/if}
           </li>
         {/each}
       </ul>

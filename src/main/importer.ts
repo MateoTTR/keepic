@@ -428,6 +428,7 @@ function upsertImportedPhoto(
     fileMtime: string
     mediaType: MediaType
     now: string
+    jobId: number
   }
 ): void {
   db.db
@@ -435,8 +436,8 @@ function upsertImportedPhoto(
       `INSERT INTO photos
          (path, filename, phash, date_taken, date_taken_source,
           width, height, file_size, file_mtime, source,
-          google_id, imported_at, created_at, deleted_at, media_type)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', NULL, ?, ?, NULL, ?)
+          google_id, imported_at, created_at, deleted_at, media_type, job_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', NULL, ?, ?, NULL, ?, ?)
        ON CONFLICT(path) DO UPDATE SET
          phash             = excluded.phash,
          date_taken        = excluded.date_taken,
@@ -446,6 +447,7 @@ function upsertImportedPhoto(
          file_size         = excluded.file_size,
          file_mtime        = excluded.file_mtime,
          media_type        = excluded.media_type,
+         job_id            = excluded.job_id,
          deleted_at        = NULL`
     )
     .run(
@@ -460,7 +462,8 @@ function upsertImportedPhoto(
       params.fileMtime,
       params.now,
       params.now,
-      params.mediaType
+      params.mediaType,
+      params.jobId
     )
 }
 
@@ -677,7 +680,8 @@ export async function executeImportPlan(
         fileSize: result.fileStat.size,
         fileMtime: result.fileStat.mtime.toISOString(),
         mediaType: result.entry.mediaType,
-        now: importedAt
+        now: importedAt,
+        jobId
       })
       imported++
       if (result.entry.mediaType === 'video') importedVideos++

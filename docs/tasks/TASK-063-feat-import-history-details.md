@@ -66,12 +66,12 @@ If oldest and newest are in the same month, show just the month. If null (all im
 
 ## Deliverables
 
-- [ ] DB migration: add `job_id` column to `photos`
-- [ ] Set `job_id` in `executeImportPlan` and indexer upserts
-- [ ] Update stats query to join and compute min/max `date_taken` per job
-- [ ] Update `LibraryStats` type with `oldestMediaDate` / `newestMediaDate`
-- [ ] Update `StatsPanel.svelte` to display date range
-- [ ] Tests for the new query and updated executor
+- [x] DB migration: add `job_id` column to `photos`
+- [x] Set `job_id` in `executeImportPlan` and indexer upserts
+- [x] Update stats query to join and compute min/max `date_taken` per job
+- [x] Update `LibraryStats` type with `oldestMediaDate` / `newestMediaDate`
+- [x] Update `StatsPanel.svelte` to display date range
+- [x] Tests for the new query and updated executor
 
 ## Files to change
 
