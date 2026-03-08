@@ -194,5 +194,7 @@ export interface LibraryStats {
     finishedAt: string // ISO 8601
     photosImported: number
     photosSkipped: number
+    oldestMediaDate: string | null // ISO date of oldest photo in this job
+    newestMediaDate: string | null // ISO date of newest photo in this job
   }>
 }

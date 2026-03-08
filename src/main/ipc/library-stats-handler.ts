@@ -52,10 +52,15 @@ export function handleGetLibraryStats(db: KeePicDatabase): LibraryStats {
 
   const recentImportRows = db.db
     .prepare(
-      `SELECT source, finished_at, photos_imported, photos_skipped
-       FROM import_jobs
-       WHERE status = 'completed'
-       ORDER BY finished_at DESC
+      `SELECT
+         j.source, j.finished_at, j.photos_imported, j.photos_skipped,
+         MIN(p.date_taken) AS oldest_media_date,
+         MAX(p.date_taken) AS newest_media_date
+       FROM import_jobs j
+       LEFT JOIN photos p ON p.job_id = j.id AND p.deleted_at IS NULL
+       WHERE j.status = 'completed'
+       GROUP BY j.id
+       ORDER BY j.finished_at DESC
        LIMIT 5`
     )
     .all() as Array<{
@@ -63,6 +68,8 @@ export function handleGetLibraryStats(db: KeePicDatabase): LibraryStats {
     finished_at: string
     photos_imported: number
     photos_skipped: number
+    oldest_media_date: string | null
+    newest_media_date: string | null
   }>
 
   return {
@@ -76,7 +83,9 @@ export function handleGetLibraryStats(db: KeePicDatabase): LibraryStats {
       source: row.source,
       finishedAt: row.finished_at,
       photosImported: row.photos_imported,
-      photosSkipped: row.photos_skipped
+      photosSkipped: row.photos_skipped,
+      oldestMediaDate: row.oldest_media_date,
+      newestMediaDate: row.newest_media_date
     }))
   }
 }

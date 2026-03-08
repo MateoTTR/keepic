@@ -45,5 +45,8 @@ export const migrations: readonly string[] = [
   `ALTER TABLE photos ADD COLUMN deleted_at TEXT;`,
 
   // Migration 2 → 3: add media_type to distinguish photos from videos
-  `ALTER TABLE photos ADD COLUMN media_type TEXT NOT NULL DEFAULT 'photo';`
+  `ALTER TABLE photos ADD COLUMN media_type TEXT NOT NULL DEFAULT 'photo';`,
+
+  // Migration 3 → 4: add job_id to link photos to their import job
+  `ALTER TABLE photos ADD COLUMN job_id INTEGER REFERENCES import_jobs(id);`
 ]
