@@ -38,7 +38,7 @@ export function isHeicFile(filePath: string): boolean {
 /** Injectable function type for checking file existence. */
 export type ExistsChecker = (path: string) => boolean
 
-const LIVE_PHOTO_VIDEO_EXTENSIONS = new Set(['.mov', '.mp4'])
+const LIVE_PHOTO_VIDEO_EXTENSIONS = new Set(['.mp4'])
 
 /**
  * Returns true if the file extension is a potential Live Photo video companion.
@@ -50,7 +50,7 @@ export function isLivePhotoVideoExtension(name: string): boolean {
 /**
  * Returns true if `videoPath` is the video component of an iPhone Live Photo.
  *
- * A .MOV or .MP4 file is a Live Photo companion when a photo still image
+ * A .MP4 file is a Live Photo companion when a photo still image
  * (.heic, .heif, .jpg, .jpeg) with the same stem exists in the same directory.
  *
  * @param videoPath   - Absolute path to the video file to check.

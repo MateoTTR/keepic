@@ -94,8 +94,8 @@ describe('isHeicFile', () => {
 // ---------------------------------------------------------------------------
 
 describe('isLivePhotoVideoExtension', () => {
-  it('returns true for .mov', () => expect(isLivePhotoVideoExtension('file.mov')).toBe(true))
-  it('returns true for .MOV', () => expect(isLivePhotoVideoExtension('file.MOV')).toBe(true))
+  it('returns false for .mov (not a Live Photo format)', () => expect(isLivePhotoVideoExtension('file.mov')).toBe(false))
+  it('returns false for .MOV (not a Live Photo format)', () => expect(isLivePhotoVideoExtension('file.MOV')).toBe(false))
   it('returns true for .mp4', () => expect(isLivePhotoVideoExtension('file.mp4')).toBe(true))
   it('returns true for .MP4', () => expect(isLivePhotoVideoExtension('file.MP4')).toBe(true))
   it('returns false for .avi', () => expect(isLivePhotoVideoExtension('file.avi')).toBe(false))
@@ -115,14 +115,14 @@ describe('isLivePhotoVideo', () => {
     expect(isLivePhotoVideo('/photos/IMG_1234.avi', () => true)).toBe(false)
   })
 
-  it('returns true when the .heic companion exists (MOV)', () => {
+  it('returns false for .MOV even when .heic companion exists (MOV is not a Live Photo format)', () => {
     const checkExists = (p: string): boolean => p.endsWith('.heic')
-    expect(isLivePhotoVideo('/photos/IMG_1234.MOV', checkExists)).toBe(true)
+    expect(isLivePhotoVideo('/photos/IMG_1234.MOV', checkExists)).toBe(false)
   })
 
-  it('returns true when the .heif companion exists but not .heic', () => {
+  it('returns false for .mov even when .heif companion exists (MOV is not a Live Photo format)', () => {
     const checkExists = (p: string): boolean => p.endsWith('.heif')
-    expect(isLivePhotoVideo('/photos/IMG_1234.mov', checkExists)).toBe(true)
+    expect(isLivePhotoVideo('/photos/IMG_1234.mov', checkExists)).toBe(false)
   })
 
   it('returns true when the .jpg companion exists (MP4)', () => {
@@ -135,8 +135,8 @@ describe('isLivePhotoVideo', () => {
     expect(isLivePhotoVideo('/photos/IMG_1234.MP4', checkExists)).toBe(true)
   })
 
-  it('returns false when no photo companion exists', () => {
-    const checkExists = (): boolean => false
+  it('returns false for .mov regardless of companions (not a Live Photo extension)', () => {
+    const checkExists = (): boolean => true
     expect(isLivePhotoVideo('/photos/IMG_1234.mov', checkExists)).toBe(false)
   })
 
@@ -145,23 +145,23 @@ describe('isLivePhotoVideo', () => {
     expect(isLivePhotoVideo('/photos/IMG_1234.mp4', checkExists)).toBe(false)
   })
 
-  it('handles uppercase .MOV extension (normalised with toLowerCase)', () => {
+  it('returns false for uppercase .MOV (not a Live Photo format)', () => {
     const checkExists = (p: string): boolean => p.endsWith('.heic')
-    expect(isLivePhotoVideo('/photos/IMG_5678.MOV', checkExists)).toBe(true)
+    expect(isLivePhotoVideo('/photos/IMG_5678.MOV', checkExists)).toBe(false)
   })
 
-  it('handles mixed-case .Mov extension', () => {
+  it('returns false for mixed-case .Mov (not a Live Photo format)', () => {
     const checkExists = (p: string): boolean => p.endsWith('.heic')
-    expect(isLivePhotoVideo('/photos/IMG_5678.Mov', checkExists)).toBe(true)
+    expect(isLivePhotoVideo('/photos/IMG_5678.Mov', checkExists)).toBe(false)
   })
 
-  it('checks .heic first and stops early when it exists', () => {
+  it('checks .heic first and stops early when it exists (MP4)', () => {
     const calls: string[] = []
     const checkExists = (p: string): boolean => {
       calls.push(p)
       return p.endsWith('.heic')
     }
-    const result = isLivePhotoVideo('/photos/IMG_1234.mov', checkExists)
+    const result = isLivePhotoVideo('/photos/IMG_1234.mp4', checkExists)
     expect(result).toBe(true)
     expect(calls).toHaveLength(1)
     expect(calls[0]).toMatch(/\.heic$/)

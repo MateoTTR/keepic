@@ -184,14 +184,14 @@ Photos are organized by date of capture using the following priority chain:
 
 ### 2.7 iPhone Live Photos and HEIC Handling
 
-An iPhone Live Photo consists of a still image paired with a short video companion: `IMG_1234.HEIC` + `IMG_1234.MP4` (or `.MOV` on older iOS versions).
+An iPhone Live Photo consists of a still image paired with a short video companion: `IMG_1234.HEIC` + `IMG_1234.MP4`.
 
-**Live Photo detection**: a video file (`.mp4` or `.mov`) is classified as a Live Photo companion if a photo file with the same stem exists in the same directory (`.heic`, `.heif`, `.jpg`, or `.jpeg`). This check is case-insensitive.
+**Live Photo detection**: a `.mp4` video file is classified as a Live Photo companion if a photo file with the same stem exists in the same directory (`.heic`, `.heif`, `.jpg`, or `.jpeg`). This check is case-insensitive. Only `.mp4` is considered a Live Photo video format — `.mov` files are always treated as standalone videos.
 
 **Default behavior**:
 - The still image (`.HEIC`) is imported and archived in the monthly folder **as-is** (no conversion)
-- The video companion (`.MP4`/`.MOV`) is discarded (not imported); count shown in import summary
-- Real videos (no sibling photo) are imported normally
+- The video companion (`.MP4`) is discarded (not imported); count shown in import summary
+- Real videos (`.mov` and standalone `.mp4` without a photo sibling) are imported normally
 
 **HEIC mode** (configured in settings as `heic.mode`):
 

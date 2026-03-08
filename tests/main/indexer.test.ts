@@ -248,14 +248,15 @@ describe('scanLibraryFiles', () => {
   // Live Photo detection in scanLibraryFiles
   // -------------------------------------------------------------------------
 
-  it('excludes .mov with a sibling .heic as live-photo', () => {
+  it('keeps .mov with a sibling .heic as a normal video (MOV is not a Live Photo format)', () => {
     buildLibrary(libraryRoot, {
       '2025/2025.01': ['IMG_1234.heic', 'IMG_1234.mov']
     })
     const { files, skippedFiles } = scanLibraryFiles(libraryRoot)
-    expect(files).toEqual(['2025/2025.01/IMG_1234.heic'])
-    expect(skippedFiles).toHaveLength(1)
-    expect(skippedFiles[0]).toMatchObject({ path: '2025/2025.01/IMG_1234.mov', reason: 'live-photo' })
+    expect(files).toContain('2025/2025.01/IMG_1234.heic')
+    expect(files).toContain('2025/2025.01/IMG_1234.mov')
+    const livePhotoSkipped = skippedFiles.filter((f) => f.reason === 'live-photo')
+    expect(livePhotoSkipped).toHaveLength(0)
   })
 
   it('excludes .mp4 with a sibling .jpg as live-photo', () => {
@@ -289,15 +290,16 @@ describe('scanLibraryFiles', () => {
     expect(livePhotoSkipped).toHaveLength(0)
   })
 
-  it('detects Live Photo case-insensitively (IMG_1234.MOV + IMG_1234.HEIC)', () => {
+  it('keeps .MOV with sibling .HEIC as a normal video (MOV is not a Live Photo format)', () => {
     buildLibrary(libraryRoot, {
       '2025/2025.01': ['IMG_1234.HEIC', 'IMG_1234.MOV']
     })
     const { files, skippedFiles } = scanLibraryFiles(libraryRoot)
-    expect(files).toHaveLength(1)
-    expect(files[0]).toBe('2025/2025.01/IMG_1234.HEIC')
-    expect(skippedFiles).toHaveLength(1)
-    expect(skippedFiles[0].reason).toBe('live-photo')
+    expect(files).toHaveLength(2)
+    expect(files).toContain('2025/2025.01/IMG_1234.HEIC')
+    expect(files).toContain('2025/2025.01/IMG_1234.MOV')
+    const livePhotoSkipped = skippedFiles.filter((f) => f.reason === 'live-photo')
+    expect(livePhotoSkipped).toHaveLength(0)
   })
 
   it('does not exclude .avi even with a photo sibling (not a Live Photo extension)', () => {
@@ -601,8 +603,8 @@ describe('runIndexer', () => {
     expect(row.media_type).toBe('video')
   })
 
-  it('excludes Live Photo video companion during re-index', async () => {
-    buildLibrary(libraryRoot, { '2025/2025.01': ['IMG_1234.heic', 'IMG_1234.mov'] })
+  it('excludes Live Photo MP4 companion during re-index', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['IMG_1234.heic', 'IMG_1234.mp4'] })
     const result = await runIndexer(libraryRoot, db, () => {}, opts)
 
     expect(result.indexed).toBe(1)
