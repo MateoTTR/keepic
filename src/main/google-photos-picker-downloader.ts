@@ -8,6 +8,7 @@ import type {
 } from '../shared/types'
 import { listPickerMediaItems } from './google-photos-picker'
 import { withConcurrency, DEFAULT_CONCURRENCY } from './concurrency'
+import { isJpegBuffer } from './heic'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -67,13 +68,6 @@ export function resolveFilenameCollision(filename: string, usedFilenames: Set<st
 
   // Fallback: append timestamp (virtually impossible to collide)
   return `${stem}_${Date.now()}${ext}`
-}
-
-/**
- * Returns true if the buffer starts with JPEG magic bytes (FF D8 FF).
- */
-export function isJpegBuffer(data: Buffer): boolean {
-  return data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff
 }
 
 /**

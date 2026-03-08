@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { isJpegBuffer } from '../../src/main/heic'
 import {
   resolveFilenameCollision,
-  isJpegBuffer,
   fixHeicJpegExtension,
   downloadMediaItem,
   refreshAccessToken,

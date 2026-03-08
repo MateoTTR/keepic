@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { vi } from 'vitest'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { ConfigManager } from '../../../src/main/config'
@@ -205,5 +206,47 @@ describe('handleSelectLibraryFolder', () => {
     const dialog = makeDialog({ canceled: false, filePaths: [join(tmpDir, 'missing')] })
     await handleSelectLibraryFolder(dialog, cfg)
     expect(cfg.get().libraryPath).toBeNull()
+  })
+
+  it('calls onLibraryChanged when library path changes', async () => {
+    const oldDir = mkdtempSync(join(tmpdir(), 'keepic-old-lib-'))
+    cfg.setLibraryPath(oldDir)
+
+    const dialog = makeDialog({ canceled: false, filePaths: [tmpDir] })
+    const onChanged = vi.fn()
+    await handleSelectLibraryFolder(dialog, cfg, onChanged)
+
+    expect(onChanged).toHaveBeenCalledOnce()
+    expect(cfg.get().libraryPath).toBe(tmpDir)
+    rmSync(oldDir, { recursive: true, force: true })
+  })
+
+  it('does not call onLibraryChanged when selecting the same path', async () => {
+    cfg.setLibraryPath(tmpDir)
+
+    const dialog = makeDialog({ canceled: false, filePaths: [tmpDir] })
+    const onChanged = vi.fn()
+    await handleSelectLibraryFolder(dialog, cfg, onChanged)
+
+    expect(onChanged).not.toHaveBeenCalled()
+  })
+
+  it('does not call onLibraryChanged on first library selection', async () => {
+    const dialog = makeDialog({ canceled: false, filePaths: [tmpDir] })
+    const onChanged = vi.fn()
+    await handleSelectLibraryFolder(dialog, cfg, onChanged)
+
+    expect(onChanged).not.toHaveBeenCalled()
+    expect(cfg.get().libraryPath).toBe(tmpDir)
+  })
+
+  it('does not call onLibraryChanged when dialog is cancelled', async () => {
+    cfg.setLibraryPath(tmpDir)
+
+    const dialog = makeDialog({ canceled: true, filePaths: [] })
+    const onChanged = vi.fn()
+    await handleSelectLibraryFolder(dialog, cfg, onChanged)
+
+    expect(onChanged).not.toHaveBeenCalled()
   })
 })
