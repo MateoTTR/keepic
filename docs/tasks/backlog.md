@@ -281,6 +281,14 @@
 
 ---
 
+## Phase 20 — Quality of Life Improvements
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| [TASK-058-feat](TASK-058-feat-purge-db-on-library-change.md) | Purge database (photos + import_jobs) when library path changes | P3 | `[x]` | 2026-03-08-session-052 |
+
+---
+
 ## Upcoming / Not Yet Planned
 
 - In-app browse/viewer (deferred)
