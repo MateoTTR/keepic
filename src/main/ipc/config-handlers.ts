@@ -47,13 +47,20 @@ export function validateLibraryPath(folderPath: string): { valid: boolean; error
  * Opens an OS folder picker dialog, validates the chosen path, and saves it
  * as the library folder in the config.
  *
- * @param showOpenDialog - Injectable dialog function (Electron boundary).
- * @param configManager  - ConfigManager instance.
+ * When the library path changes (was set to a different value), the optional
+ * `onLibraryChanged` callback is invoked so the caller can purge stale data.
+ *
+ * @param showOpenDialog   - Injectable dialog function (Electron boundary).
+ * @param configManager    - ConfigManager instance.
+ * @param onLibraryChanged - Optional callback fired when the library path changes.
  */
 export async function handleSelectLibraryFolder(
   showOpenDialog: ShowOpenDialogFn,
-  configManager: ConfigManager
+  configManager: ConfigManager,
+  onLibraryChanged?: () => void
 ): Promise<SelectLibraryFolderResult> {
+  const previousPath = configManager.get().libraryPath
+
   const result = await showOpenDialog({
     properties: ['openDirectory'],
     title: 'Select KeePic library folder'
@@ -71,5 +78,10 @@ export async function handleSelectLibraryFolder(
   }
 
   configManager.setLibraryPath(folderPath)
+
+  if (previousPath && folderPath !== previousPath && onLibraryChanged) {
+    onLibraryChanged()
+  }
+
   return { cancelled: false, path: folderPath }
 }
