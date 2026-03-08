@@ -131,6 +131,7 @@ export async function listPickerMediaItems(
         }
       }
       type?: string
+      createTime?: string
     }>
     nextPageToken?: string
   }
@@ -141,7 +142,7 @@ export async function listPickerMediaItems(
     mimeType: item.mediaFile?.mimeType ?? item.mimeType,
     filename: item.mediaFile?.filename ?? `${item.id}.jpg`,
     mediaMetadata: {
-      creationTime: '',
+      creationTime: item.createTime ?? '',
       width: '',
       height: ''
     }

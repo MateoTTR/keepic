@@ -137,7 +137,7 @@ describe('fixHeicJpegExtension', () => {
 // ---------------------------------------------------------------------------
 
 describe('downloadMediaItem', () => {
-  it('fetches baseUrl + =d, writes the response buffer, and returns it', async () => {
+  it('fetches baseUrl + =d for photos, writes the response buffer, and returns it', async () => {
     const fileData = Buffer.from('fake-image-bytes')
     let capturedPath: string | undefined
     let capturedData: Buffer | undefined
@@ -154,12 +154,102 @@ describe('downloadMediaItem', () => {
 
     const result = await downloadMediaItem(makeItem(), 'my-token', '/tmp/IMG_001.JPG', {
       fetch: mockFetch,
-      writeFile: mockWrite
+      writeFile: mockWrite,
+      setFileTimes: vi.fn()
     })
 
     expect(capturedPath).toBe('/tmp/IMG_001.JPG')
     expect(capturedData).toEqual(fileData)
     expect(result).toEqual(fileData)
+  })
+
+  it('fetches baseUrl + =dv for video mimeTypes', async () => {
+    const videoItem = makeItem({ mimeType: 'video/mp4', filename: 'VID_001.mp4' })
+    let capturedUrl: string | undefined
+
+    const mockFetch = vi.fn(async (url: string) => {
+      capturedUrl = url
+      return new Response(Buffer.from('video-data'), { status: 200 })
+    })
+
+    await downloadMediaItem(videoItem, 'tok', '/tmp/VID_001.mp4', {
+      fetch: mockFetch,
+      writeFile: vi.fn(),
+      setFileTimes: vi.fn()
+    })
+
+    expect(capturedUrl).toBe('https://photos.example.com/item-1=dv')
+  })
+
+  it('uses =dv for video/quicktime (MOV) mimeType', async () => {
+    const movItem = makeItem({ mimeType: 'video/quicktime', filename: 'VID.MOV' })
+    let capturedUrl: string | undefined
+
+    const mockFetch = vi.fn(async (url: string) => {
+      capturedUrl = url
+      return new Response(Buffer.from('mov-data'), { status: 200 })
+    })
+
+    await downloadMediaItem(movItem, 'tok', '/tmp/VID.MOV', {
+      fetch: mockFetch,
+      writeFile: vi.fn(),
+      setFileTimes: vi.fn()
+    })
+
+    expect(capturedUrl).toBe('https://photos.example.com/item-1=dv')
+  })
+
+  it('sets file mtime from creationTime when available', async () => {
+    const item = makeItem({
+      mediaMetadata: { creationTime: '2026-02-15T10:30:00Z', width: '', height: '' }
+    })
+    const mockSetFileTimes = vi.fn()
+
+    const mockFetch = vi.fn(async () => new Response(Buffer.from('data'), { status: 200 }))
+
+    await downloadMediaItem(item, 'tok', '/tmp/out.jpg', {
+      fetch: mockFetch,
+      writeFile: vi.fn(),
+      setFileTimes: mockSetFileTimes
+    })
+
+    expect(mockSetFileTimes).toHaveBeenCalledWith(
+      '/tmp/out.jpg',
+      new Date('2026-02-15T10:30:00Z'),
+      new Date('2026-02-15T10:30:00Z')
+    )
+  })
+
+  it('does not set mtime when creationTime is empty', async () => {
+    const item = makeItem({ mediaMetadata: { creationTime: '', width: '', height: '' } })
+    const mockSetFileTimes = vi.fn()
+
+    const mockFetch = vi.fn(async () => new Response(Buffer.from('data'), { status: 200 }))
+
+    await downloadMediaItem(item, 'tok', '/tmp/out.jpg', {
+      fetch: mockFetch,
+      writeFile: vi.fn(),
+      setFileTimes: mockSetFileTimes
+    })
+
+    expect(mockSetFileTimes).not.toHaveBeenCalled()
+  })
+
+  it('does not set mtime when creationTime is an invalid date', async () => {
+    const item = makeItem({
+      mediaMetadata: { creationTime: 'not-a-date', width: '', height: '' }
+    })
+    const mockSetFileTimes = vi.fn()
+
+    const mockFetch = vi.fn(async () => new Response(Buffer.from('data'), { status: 200 }))
+
+    await downloadMediaItem(item, 'tok', '/tmp/out.jpg', {
+      fetch: mockFetch,
+      writeFile: vi.fn(),
+      setFileTimes: mockSetFileTimes
+    })
+
+    expect(mockSetFileTimes).not.toHaveBeenCalled()
   })
 
   it('sends Authorization header', async () => {
@@ -172,7 +262,8 @@ describe('downloadMediaItem', () => {
 
     await downloadMediaItem(makeItem(), 'bearer-tok', '/tmp/out.jpg', {
       fetch: mockFetch,
-      writeFile: vi.fn()
+      writeFile: vi.fn(),
+      setFileTimes: vi.fn()
     })
 
     expect(capturedHeaders?.Authorization).toBe('Bearer bearer-tok')
@@ -184,7 +275,8 @@ describe('downloadMediaItem', () => {
     await expect(
       downloadMediaItem(makeItem(), 'tok', '/tmp/out.jpg', {
         fetch: mockFetch,
-        writeFile: vi.fn()
+        writeFile: vi.fn(),
+        setFileTimes: vi.fn()
       })
     ).rejects.toThrow('404')
   })
@@ -290,7 +382,7 @@ describe('downloadPickerPhotos', () => {
 
   function makeDownloadFetch(itemData: Buffer = Buffer.from('img-data')) {
     return vi.fn(async (url: string) => {
-      if (url.endsWith('=d')) {
+      if (url.endsWith('=d') || url.endsWith('=dv')) {
         return new Response(new Uint8Array(itemData), { status: 200 })
       }
       // Refresh token endpoint
@@ -387,6 +479,59 @@ describe('downloadPickerPhotos', () => {
     expect(writtenPaths).toContain('/dl/IMG_2.jpg')
   })
 
+  it('uses =dv suffix for video items in download phase', async () => {
+    const items = [
+      makeItem({ filename: 'photo.jpg', mimeType: 'image/jpeg' }),
+      makeItem({ id: 'i2', filename: 'video.mp4', mimeType: 'video/mp4' })
+    ]
+    const listFn = makeListMediaItems([{ items }])
+    const capturedUrls: string[] = []
+    const mockFetch = vi.fn(async (url: string) => {
+      capturedUrls.push(url)
+      return new Response(Buffer.from('data'), { status: 200 })
+    })
+
+    const result = await downloadPickerPhotos('session-1', TOKENS, '/dl', vi.fn(), {
+      fetch: mockFetch,
+      writeFile: mockWriteFile,
+      mkdirp: mockMkdirp,
+      listMediaItems: listFn
+    })
+
+    expect(result.status).toBe('completed')
+    expect(result.downloaded).toBe(2)
+    expect(capturedUrls.some((u) => u.endsWith('=d'))).toBe(true)
+    expect(capturedUrls.some((u) => u.endsWith('=dv'))).toBe(true)
+  })
+
+  it('sets file mtime from creationTime during download phase', async () => {
+    const items = [
+      makeItem({
+        filename: 'VID.mp4',
+        mimeType: 'video/mp4',
+        mediaMetadata: { creationTime: '2026-02-15T14:00:00Z', width: '', height: '' }
+      })
+    ]
+    const listFn = makeListMediaItems([{ items }])
+    const mockSetFileTimes = vi.fn()
+
+    const result = await downloadPickerPhotos('session-1', TOKENS, '/dl', vi.fn(), {
+      fetch: makeDownloadFetch(),
+      writeFile: mockWriteFile,
+      mkdirp: mockMkdirp,
+      setFileTimes: mockSetFileTimes,
+      listMediaItems: listFn
+    })
+
+    expect(result.status).toBe('completed')
+    expect(result.downloaded).toBe(1)
+    expect(mockSetFileTimes).toHaveBeenCalledWith(
+      '/dl/VID.mp4',
+      new Date('2026-02-15T14:00:00Z'),
+      new Date('2026-02-15T14:00:00Z')
+    )
+  })
+
   it('records error for failed download item and continues', async () => {
     const items = [
       makeItem({ filename: 'A.jpg' }),
@@ -396,7 +541,7 @@ describe('downloadPickerPhotos', () => {
     const listFn = makeListMediaItems([{ items }])
     let downloadCallCount = 0
     const mockFetch = vi.fn(async (url: string) => {
-      if (url.endsWith('=d')) {
+      if (url.endsWith('=d') || url.endsWith('=dv')) {
         downloadCallCount++
         if (downloadCallCount === 2) return new Response('Server Error', { status: 500 })
         return new Response(Buffer.from('img'), { status: 200 })
