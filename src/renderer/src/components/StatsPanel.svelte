@@ -28,7 +28,11 @@
     <h2 class="text-lg font-semibold text-gray-900 mb-4">Library</h2>
 
     <p class="text-gray-700 mb-6">
-      {stats.totalPhotos.toLocaleString()} photos
+      {stats.totalPhotos.toLocaleString()} photo{stats.totalPhotos !== 1 ? 's' : ''}
+      {#if stats.totalVideos > 0}
+        &nbsp;•&nbsp;
+        {stats.totalVideos.toLocaleString()} video{stats.totalVideos !== 1 ? 's' : ''}
+      {/if}
       &nbsp;•&nbsp;
       {formatBytes(stats.totalSizeBytes)}
       {#if stats.oldestDate && stats.newestDate}

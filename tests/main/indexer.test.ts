@@ -244,6 +244,71 @@ describe('scanLibraryFiles', () => {
     expect(files).toEqual(['2025/2025.01/photo.jpg'])
   })
 
+  // -------------------------------------------------------------------------
+  // Live Photo detection in scanLibraryFiles
+  // -------------------------------------------------------------------------
+
+  it('excludes .mov with a sibling .heic as live-photo', () => {
+    buildLibrary(libraryRoot, {
+      '2025/2025.01': ['IMG_1234.heic', 'IMG_1234.mov']
+    })
+    const { files, skippedFiles } = scanLibraryFiles(libraryRoot)
+    expect(files).toEqual(['2025/2025.01/IMG_1234.heic'])
+    expect(skippedFiles).toHaveLength(1)
+    expect(skippedFiles[0]).toMatchObject({ path: '2025/2025.01/IMG_1234.mov', reason: 'live-photo' })
+  })
+
+  it('excludes .mp4 with a sibling .jpg as live-photo', () => {
+    buildLibrary(libraryRoot, {
+      '2025/2025.01': ['photo.jpg', 'photo.mp4']
+    })
+    const { files, skippedFiles } = scanLibraryFiles(libraryRoot)
+    expect(files).toEqual(['2025/2025.01/photo.jpg'])
+    expect(skippedFiles).toHaveLength(1)
+    expect(skippedFiles[0]).toMatchObject({ path: '2025/2025.01/photo.mp4', reason: 'live-photo' })
+  })
+
+  it('keeps .mov without any photo sibling as a normal video', () => {
+    buildLibrary(libraryRoot, {
+      '2025/2025.01': ['standalone.mov']
+    })
+    const { files, skippedFiles } = scanLibraryFiles(libraryRoot)
+    expect(files).toEqual(['2025/2025.01/standalone.mov'])
+    expect(skippedFiles).toHaveLength(0)
+  })
+
+  it('keeps .mp4 when sibling .heic is in a different folder', () => {
+    buildLibrary(libraryRoot, {
+      '2025/2025.01': ['IMG_1234.mp4'],
+      '2025/2025.02': ['IMG_1234.heic']
+    })
+    const { files, skippedFiles } = scanLibraryFiles(libraryRoot)
+    expect(files).toContain('2025/2025.01/IMG_1234.mp4')
+    expect(files).toContain('2025/2025.02/IMG_1234.heic')
+    const livePhotoSkipped = skippedFiles.filter((f) => f.reason === 'live-photo')
+    expect(livePhotoSkipped).toHaveLength(0)
+  })
+
+  it('detects Live Photo case-insensitively (IMG_1234.MOV + IMG_1234.HEIC)', () => {
+    buildLibrary(libraryRoot, {
+      '2025/2025.01': ['IMG_1234.HEIC', 'IMG_1234.MOV']
+    })
+    const { files, skippedFiles } = scanLibraryFiles(libraryRoot)
+    expect(files).toHaveLength(1)
+    expect(files[0]).toBe('2025/2025.01/IMG_1234.HEIC')
+    expect(skippedFiles).toHaveLength(1)
+    expect(skippedFiles[0].reason).toBe('live-photo')
+  })
+
+  it('does not exclude .avi even with a photo sibling (not a Live Photo extension)', () => {
+    buildLibrary(libraryRoot, {
+      '2025/2025.01': ['clip.avi', 'clip.jpg']
+    })
+    const { files } = scanLibraryFiles(libraryRoot)
+    expect(files).toContain('2025/2025.01/clip.avi')
+    expect(files).toContain('2025/2025.01/clip.jpg')
+  })
+
   it('reports file with no extension as unrecognized', () => {
     buildLibrary(libraryRoot, { '2025/2025.01': ['Makefile'] })
     const { files, skippedFiles } = scanLibraryFiles(libraryRoot)
@@ -279,7 +344,7 @@ describe('runIndexer', () => {
 
   it('returns zeroes for an empty library', async () => {
     const result = await runIndexer(libraryRoot, db, () => {}, opts)
-    expect(result).toEqual({ indexed: 0, skipped: 0, deleted: 0, errors: [], skippedFiles: [] })
+    expect(result).toEqual({ indexed: 0, indexedPhotos: 0, indexedVideos: 0, skipped: 0, deleted: 0, errors: [], skippedFiles: [] })
   })
 
   it('uses default ExifLoader and PhashComputer when options are omitted', async () => {
@@ -293,6 +358,8 @@ describe('runIndexer', () => {
     buildLibrary(libraryRoot, { '2025/2025.01': ['a.jpg', 'b.jpg'] })
     const result = await runIndexer(libraryRoot, db, () => {}, opts)
     expect(result.indexed).toBe(2)
+    expect(result.indexedPhotos).toBe(2)
+    expect(result.indexedVideos).toBe(0)
     expect(result.skipped).toBe(0)
     expect(result.deleted).toBe(0)
   })
@@ -491,7 +558,7 @@ describe('runIndexer', () => {
 
   it('stores media_type as photo for image files and video for video files', async () => {
     buildLibrary(libraryRoot, { '2025/2025.01': ['photo.jpg', 'clip.mp4'] })
-    await runIndexer(libraryRoot, db, () => {}, opts)
+    const result = await runIndexer(libraryRoot, db, () => {}, opts)
 
     const photoRow = db.db
       .prepare('SELECT media_type FROM photos WHERE path = ?')
@@ -502,6 +569,9 @@ describe('runIndexer', () => {
       .prepare('SELECT media_type FROM photos WHERE path = ?')
       .get('2025/2025.01/clip.mp4') as { media_type: string }
     expect(videoRow.media_type).toBe('video')
+
+    expect(result.indexedPhotos).toBe(1)
+    expect(result.indexedVideos).toBe(1)
   })
 
   it('skips pHash computation for video files', async () => {
@@ -529,6 +599,46 @@ describe('runIndexer', () => {
     expect(row.width).toBeNull()
     expect(row.height).toBeNull()
     expect(row.media_type).toBe('video')
+  })
+
+  it('excludes Live Photo video companion during re-index', async () => {
+    buildLibrary(libraryRoot, { '2025/2025.01': ['IMG_1234.heic', 'IMG_1234.mov'] })
+    const result = await runIndexer(libraryRoot, db, () => {}, opts)
+
+    expect(result.indexed).toBe(1)
+    expect(result.indexedPhotos).toBe(1)
+    expect(result.indexedVideos).toBe(0)
+    expect(result.skippedFiles.some((f) => f.reason === 'live-photo')).toBe(true)
+
+    const rows = getAllPhotos(db)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].path).toBe('2025/2025.01/IMG_1234.heic')
+  })
+
+  it('marks previously indexed Live Photo companion as deleted after re-index excludes it', async () => {
+    // First index: both files indexed (simulate pre-feature state by indexing individually)
+    buildLibrary(libraryRoot, { '2025/2025.01': ['clip.mp4'] })
+    await runIndexer(libraryRoot, db, () => {}, opts)
+
+    // Now add the photo sibling — the video becomes a Live Photo companion
+    touch(join(libraryRoot, '2025/2025.01/clip.jpg'))
+    // Force distinct mtime on mp4 to avoid skipping
+    const mp4Path = join(libraryRoot, '2025/2025.01/clip.mp4')
+    const futureTime = new Date(Date.now() + 2000)
+    utimesSync(mp4Path, futureTime, futureTime)
+
+    const result2 = await runIndexer(libraryRoot, db, () => {}, opts)
+
+    // The video should be excluded (Live Photo) and marked deleted
+    expect(result2.deleted).toBe(1)
+    expect(result2.indexed).toBe(1) // only the .jpg
+
+    const rows = getAllPhotos(db)
+    const videoRow = rows.find((r) => r.path === '2025/2025.01/clip.mp4')
+    expect(videoRow?.deleted_at).not.toBeNull()
+
+    const photoRow = rows.find((r) => r.path === '2025/2025.01/clip.jpg')
+    expect(photoRow?.deleted_at).toBeNull()
   })
 
   it('reports non-Error pHash failures as strings', async () => {

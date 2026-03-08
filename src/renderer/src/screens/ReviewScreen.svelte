@@ -29,6 +29,8 @@
 
   const counts = $derived({
     ready: localPlan.filter((e) => e.status === 'ready').length,
+    readyPhotos: localPlan.filter((e) => e.status === 'ready' && e.mediaType === 'photo').length,
+    readyVideos: localPlan.filter((e) => e.status === 'ready' && e.mediaType === 'video').length,
     duplicate: localPlan.filter((e) => e.status === 'duplicate').length,
     collision: localPlan.filter((e) => e.status === 'collision').length,
     error: localPlan.filter((e) => e.status === 'error').length
@@ -83,7 +85,7 @@
 
     <!-- Summary bar -->
     <div class="flex flex-wrap gap-3 text-sm">
-      <span class="text-green-700">● {counts.ready} ready</span>
+      <span class="text-green-700">● {counts.ready} ready{#if counts.readyVideos > 0 && counts.readyPhotos > 0} ({counts.readyPhotos} photo{counts.readyPhotos !== 1 ? 's' : ''}, {counts.readyVideos} video{counts.readyVideos !== 1 ? 's' : ''}){/if}</span>
       <span class="text-amber-700">◆ {counts.duplicate} duplicate{counts.duplicate !== 1 ? 's' : ''}</span>
       <span class="text-blue-700">▲ {counts.collision} collision{counts.collision !== 1 ? 's' : ''}</span>
       <span class="text-red-700">✕ {counts.error} error{counts.error !== 1 ? 's' : ''}</span>

@@ -241,8 +241,20 @@
 | # | Title | Priority | Status | Session |
 |---|---|---|---|---|
 | TASK-047-fix | Fix `plan.skippedFiles is not iterable` — skippedFiles not propagated through UI flow (PlanningScreen -> App -> ExecutionScreen) | P0 | `[x]` | 2026-03-07-session-043 |
-| TASK-048-feat | Detect and report Live Photo video companions during library re-index (informational, no deletion) | P3 | `[ ]` | — |
-| TASK-049-fix | Cleanup stale temp directories on app startup (`temp/import-*`, `picker-staging/*` in userData) | P3 | `[ ]` | — |
+| [TASK-048-feat](TASK-048-feat-live-photo-reindex.md) | Detect and exclude Live Photo video companions during library re-index (consistent with import behavior) | P3 | `[x]` | 2026-03-08-session-050 |
+| [TASK-049-fix](TASK-049-fix-temp-dir-cleanup.md) | Cleanup stale temp directories on app startup (`temp/import-*`, `picker-staging/*` in userData) | P3 | `[x]` | 2026-03-08-session-049 |
+
+---
+
+## Phase 17 — v0.3.x Release Fixes & Improvements
+
+> Bugs and improvements found during manual testing of v0.3.1/v0.3.2 (2026-03-07).
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| [TASK-051-fix](TASK-051-fix-libheif-upgrade.md) | Upgrade libheif 1.17.6 → 1.21.2 — fix "Too many auxiliary image references" on Apple HDR HEIC files | P1 | `[x]` | 2026-03-08-session-048 |
+| [TASK-052-fix](TASK-052-fix-picker-staging-cleanup.md) | Fix EPERM on picker-staging cleanup (Windows file lock on `unlink`) | P2 | `[x]` | 2026-03-08-session-049 |
+| [TASK-053-feat](TASK-053-feat-photo-video-stats.md) | Differentiate photos vs videos in stats and reports (library stats, import history, scan/analysis/import reports) | P3 | `[x]` | 2026-03-08-session-049 |
 
 ---
 

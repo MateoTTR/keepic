@@ -3,7 +3,7 @@ import { join, basename, extname } from 'path'
 import { isYearFolder } from '../shared/library-path'
 import { readExifDate, defaultExifLoader, type ExifLoader } from './exif'
 import { type PhashComputer, type PhashResult } from './phash'
-import { createUniversalPhashComputer } from './heic'
+import { createUniversalPhashComputer, isLivePhotoVideoExtension } from './heic'
 import { withConcurrency, DEFAULT_CONCURRENCY } from './concurrency'
 import { getMediaType, type MediaType } from '../shared/media-type'
 import type { KeePicDatabase } from './db/database'
@@ -105,6 +105,29 @@ export function scanLibraryFiles(libraryPath: string): {
         }
       }
     }
+  }
+
+  // Post-scan pass: detect Live Photo video companions
+  const PHOTO_SIBLING_EXTENSIONS = ['.heic', '.heif', '.jpg', '.jpeg']
+  const fileSet = new Set(files.map((f) => f.toLowerCase()))
+  const livePhotoIndices: number[] = []
+
+  for (let i = 0; i < files.length; i++) {
+    const rel = files[i]
+    if (!isLivePhotoVideoExtension(rel)) continue
+    const stem = rel.slice(0, -extname(rel).length)
+    const hasPhotoSibling = PHOTO_SIBLING_EXTENSIONS.some((ext) =>
+      fileSet.has((stem + ext).toLowerCase())
+    )
+    if (hasPhotoSibling) {
+      livePhotoIndices.push(i)
+      skippedFiles.push({ path: rel, reason: 'live-photo' })
+    }
+  }
+
+  // Remove Live Photo companions from files (reverse order to preserve indices)
+  for (let i = livePhotoIndices.length - 1; i >= 0; i--) {
+    files.splice(livePhotoIndices[i], 1)
   }
 
   return { files, skippedFiles }
@@ -302,6 +325,8 @@ export async function runIndexer(
   const presentPaths = new Set<string>()
   const errors: Array<{ file: string; error: string }> = []
   let indexed = 0
+  let indexedPhotos = 0
+  let indexedVideos = 0
   let skipped = 0
 
   for (let i = 0; i < phase1Results.length; i++) {
@@ -331,6 +356,8 @@ export async function runIndexer(
         now
       })
       indexed++
+      if (result.mediaType === 'video') indexedVideos++
+      else indexedPhotos++
     }
 
     onProgress({ total, processed: i + 1, indexed, skipped })
@@ -345,5 +372,5 @@ export async function runIndexer(
     allSkippedFiles.push({ path: err.file, reason: 'error' })
   }
 
-  return { indexed, skipped, deleted, errors, skippedFiles: allSkippedFiles }
+  return { indexed, indexedPhotos, indexedVideos, skipped, deleted, errors, skippedFiles: allSkippedFiles }
 }

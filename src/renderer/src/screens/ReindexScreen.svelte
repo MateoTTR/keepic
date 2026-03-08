@@ -14,7 +14,13 @@
 
   let status: Status = $state('starting')
   let progress: { processed: number; total: number } | null = $state(null)
-  let result: { indexed: number; skipped: number; deleted: number } | null = $state(null)
+  let result: {
+    indexed: number
+    indexedPhotos: number
+    indexedVideos: number
+    skipped: number
+    deleted: number
+  } | null = $state(null)
   let skippedFiles: SkippedFile[] = $state([])
   let errorMessage: string | null = $state(null)
   let startTime: number = $state(0)
@@ -22,6 +28,7 @@
 
   const done = $derived(status === 'done' || status === 'error' || status === 'alreadyRunning')
 
+  const livePhotoSkipped = $derived(skippedFiles.filter((f) => f.reason === 'live-photo'))
   const unrecognizedSkipped = $derived(skippedFiles.filter((f) => f.reason === 'unrecognized-extension'))
   const errorSkipped = $derived(skippedFiles.filter((f) => f.reason === 'error'))
 
@@ -38,6 +45,8 @@
       if (r.type === 'complete') {
         result = {
           indexed: r.indexed ?? 0,
+          indexedPhotos: r.indexedPhotos ?? 0,
+          indexedVideos: r.indexedVideos ?? 0,
           skipped: r.skipped ?? 0,
           deleted: r.deleted ?? 0
         }
@@ -78,7 +87,7 @@
       </p>
     {:else if status === 'done' && result}
       <p class="text-gray-700">
-        ✓ Done in {formatElapsed(elapsedMs)} — {result.indexed} indexed, {result.skipped} unchanged, {result.deleted} removed
+        ✓ Done in {formatElapsed(elapsedMs)} — {result.indexed} indexed{#if result.indexedPhotos > 0 || result.indexedVideos > 0} ({result.indexedPhotos} photos, {result.indexedVideos} videos){/if}, {result.skipped} unchanged, {result.deleted} removed
       </p>
 
       {#if skippedFiles.length > 0}
@@ -87,6 +96,16 @@
             Skipped files ({skippedFiles.length})
           </summary>
           <div class="mt-2 space-y-3 text-xs">
+            {#if livePhotoSkipped.length > 0}
+              <div>
+                <p class="font-medium text-gray-500 mb-1">Live Photo videos ({livePhotoSkipped.length})</p>
+                <ul class="space-y-0.5 text-gray-500">
+                  {#each livePhotoSkipped as f, i (i)}
+                    <li class="font-mono">• {f.path}</li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
             {#if unrecognizedSkipped.length > 0}
               <div>
                 <p class="font-medium text-gray-500 mb-1">Unrecognized extensions ({unrecognizedSkipped.length})</p>
