@@ -134,7 +134,7 @@ describe('pollPickerSession', () => {
 // ---------------------------------------------------------------------------
 
 describe('listPickerMediaItems', () => {
-  it('returns items from mediaFile structure', async () => {
+  it('returns items from mediaFile structure with creationTime', async () => {
     const deps = mockFetch(200, {
       mediaItems: [
         {
@@ -142,6 +142,7 @@ describe('listPickerMediaItems', () => {
           baseUrl: 'https://base/1',
           mimeType: 'image/jpeg',
           type: 'PHOTO',
+          createTime: '2026-02-15T10:30:00Z',
           mediaFile: {
             filename: 'photo1.jpg',
             baseUrl: 'https://mediafile/1',
@@ -160,13 +161,13 @@ describe('listPickerMediaItems', () => {
         baseUrl: 'https://mediafile/1',
         mimeType: 'image/jpeg',
         filename: 'photo1.jpg',
-        mediaMetadata: { creationTime: '', width: '', height: '' }
+        mediaMetadata: { creationTime: '2026-02-15T10:30:00Z', width: '', height: '' }
       }
     ])
     expect(result.nextPageToken).toBe('page2')
   })
 
-  it('falls back to top-level fields when mediaFile is absent', async () => {
+  it('falls back to top-level fields when mediaFile is absent, empty creationTime', async () => {
     const deps = mockFetch(200, {
       mediaItems: [
         {
