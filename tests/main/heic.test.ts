@@ -7,6 +7,7 @@ import {
   isLivePhotoVideo,
   isLivePhotoVideoExtension,
   isHeicFile,
+  isJpegBuffer,
   createHeicConverter,
   createUniversalPhashComputer,
   defaultHeicDecode,
@@ -90,7 +91,35 @@ describe('isHeicFile', () => {
 })
 
 // ---------------------------------------------------------------------------
-// isLivePhotoMov
+// isJpegBuffer
+// ---------------------------------------------------------------------------
+
+describe('isJpegBuffer', () => {
+  it('returns true for JPEG with JFIF marker', () => {
+    expect(isJpegBuffer(Buffer.from([0xff, 0xd8, 0xff, 0xe0]))).toBe(true)
+  })
+
+  it('returns true for JPEG with EXIF marker', () => {
+    expect(isJpegBuffer(Buffer.from([0xff, 0xd8, 0xff, 0xe1]))).toBe(true)
+  })
+
+  it('returns false for HEIC buffer (ftyp box)', () => {
+    const heicHeader = Buffer.from([0x00, 0x00, 0x00, 0x1c, 0x66, 0x74, 0x79, 0x70])
+    expect(isJpegBuffer(heicHeader)).toBe(false)
+  })
+
+  it('returns false for PNG buffer', () => {
+    expect(isJpegBuffer(Buffer.from([0x89, 0x50, 0x4e, 0x47]))).toBe(false)
+  })
+
+  it('returns false for buffers shorter than 3 bytes', () => {
+    expect(isJpegBuffer(Buffer.from([0xff, 0xd8]))).toBe(false)
+    expect(isJpegBuffer(Buffer.from([]))).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// isLivePhotoVideoExtension
 // ---------------------------------------------------------------------------
 
 describe('isLivePhotoVideoExtension', () => {
@@ -230,6 +259,29 @@ describe('createHeicConverter', () => {
     await expect(converter('/src/bad.heic', '/dest/out.jpg', 90)).rejects.toThrow('corrupt HEIC')
   })
 
+  it('bypasses HEIC decode when .heic file is actually JPEG (magic bytes)', async () => {
+    let decodeCalled = false
+    const mockDecode: HeicDecodeFn = async () => {
+      decodeCalled = true
+      return { data: new Uint8Array(16), width: 4, height: 4 }
+    }
+    // Create a real tiny JPEG buffer via sharp (valid for sharp to re-read)
+    const sharpMod = (await import('sharp')).default
+    const jpegBuffer = await sharpMod({
+      create: { width: 2, height: 2, channels: 3, background: { r: 128, g: 128, b: 128 } }
+    })
+      .jpeg({ quality: 50 })
+      .toBuffer()
+
+    const dest = join(tmpDir, 'jpeg-in-heic.jpg')
+    const converter = createHeicConverter(mockDecode, () => jpegBuffer)
+    await converter('/src/IMG_1854.heic', dest, 85)
+
+    expect(decodeCalled).toBe(false)
+    const meta = await sharpMod(dest).metadata()
+    expect(meta.format).toBe('jpeg')
+  })
+
   it('uses defaultHeicDecode and readFileSync when not injected', () => {
     const converter = createHeicConverter()
     expect(typeof converter).toBe('function')
@@ -347,6 +399,37 @@ describe('createUniversalPhashComputer', () => {
     const result = await computer('/photos/IMG.heic')
     expect(result!.width).toBe(3024)
     expect(result!.height).toBe(4032)
+  })
+
+  it('routes .heic file with JPEG magic bytes through computeSharpPhash (bypasses HEIC decode)', async () => {
+    let decodeCalled = false
+    const mockDecode: HeicDecodeFn = async () => {
+      decodeCalled = true
+      return { data: new Uint8Array(64), width: 4, height: 4 }
+    }
+    let sharpPhashPath: string | null = null
+    const mockSharpPhash2: PhashComputer = async (filePath: string): Promise<PhashResult> => {
+      sharpPhashPath = filePath
+      return { phash: 'abcdef0123456789', width: 200, height: 150 }
+    }
+    // JPEG magic bytes
+    const jpegBuffer = Buffer.alloc(100)
+    jpegBuffer[0] = 0xff
+    jpegBuffer[1] = 0xd8
+    jpegBuffer[2] = 0xff
+
+    const computer = createUniversalPhashComputer({
+      decodeFn: mockDecode,
+      readFile: () => jpegBuffer,
+      computeSharpPhash: mockSharpPhash2
+    })
+
+    const result = await computer('/photos/IMG_1854.HEIC')
+
+    expect(decodeCalled).toBe(false)
+    expect(sharpPhashPath).toBe('/photos/IMG_1854.HEIC')
+    expect(result!.phash).toBe('abcdef0123456789')
+    expect(result!.width).toBe(200)
   })
 
   it('uses default dependencies when no options provided', () => {
