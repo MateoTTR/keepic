@@ -3,7 +3,13 @@ import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import sharp from 'sharp'
-import { dctHash, defaultPhashComputer } from '../../src/main/phash'
+import {
+  dctHash,
+  dHash,
+  hammingDistance,
+  defaultPhashComputer,
+  HAMMING_THRESHOLD
+} from '../../src/main/phash'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -60,6 +66,85 @@ describe('dctHash', () => {
     const h2 = dctHash(checkerboardPixels(), 32)
     expect(h1).toBe(h2)
   })
+
+  it('uses median threshold — all-black image produces all-zero hash', () => {
+    // All pixels = 0: all DCT = 0, median(AC) = 0, nothing > 0 → all bits 0
+    expect(dctHash(uniformPixels(0), 32)).toBe('0000000000000000')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// dHash (pure function)
+// ---------------------------------------------------------------------------
+
+describe('dHash', () => {
+  it('returns a 16-character lowercase hex string', () => {
+    const hash = dHash(checkerboardPixels(), 32)
+    expect(hash).toHaveLength(16)
+    expect(hash).toMatch(/^[0-9a-f]{16}$/)
+  })
+
+  it('returns the same hash for identical pixel arrays', () => {
+    const pixels = checkerboardPixels()
+    expect(dHash(pixels, 32)).toBe(dHash(pixels, 32))
+  })
+
+  it('returns all-zeros for a uniform image (no gradient)', () => {
+    // All pixels identical → no pixel is > its neighbor → all bits 0
+    expect(dHash(uniformPixels(128), 32)).toBe('0000000000000000')
+  })
+
+  it('returns a non-zero hash for a half-bright/half-dark image', () => {
+    // Left half = 255, right half = 0 — clear gradient transition
+    const pixels = new Uint8Array(32 * 32)
+    for (let y = 0; y < 32; y++) {
+      for (let x = 0; x < 32; x++) {
+        pixels[y * 32 + x] = x < 16 ? 255 : 0
+      }
+    }
+    const hash = dHash(pixels, 32)
+    expect(hash).not.toBe('0000000000000000')
+  })
+
+  it('produces different hashes for horizontally opposite patterns', () => {
+    const leftBright = new Uint8Array(32 * 32)
+    const rightBright = new Uint8Array(32 * 32)
+    for (let y = 0; y < 32; y++) {
+      for (let x = 0; x < 32; x++) {
+        leftBright[y * 32 + x] = x < 16 ? 255 : 0
+        rightBright[y * 32 + x] = x >= 16 ? 255 : 0
+      }
+    }
+    expect(dHash(leftBright, 32)).not.toBe(dHash(rightBright, 32))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// hammingDistance
+// ---------------------------------------------------------------------------
+
+describe('hammingDistance', () => {
+  it('returns 0 for identical hashes', () => {
+    expect(hammingDistance('abcdef0123456789', 'abcdef0123456789')).toBe(0)
+  })
+
+  it('returns 1 for a single-bit difference', () => {
+    // 8 = 1000, 0 = 0000 → 1 bit difference
+    expect(hammingDistance('8000000000000000', '0000000000000000')).toBe(1)
+  })
+
+  it('returns 4 for a 4-bit difference', () => {
+    // f = 1111, 0 = 0000 → 4 bits
+    expect(hammingDistance('f000000000000000', '0000000000000000')).toBe(4)
+  })
+
+  it('returns 64 for maximally different 16-char hashes', () => {
+    expect(hammingDistance('ffffffffffffffff', '0000000000000000')).toBe(64)
+  })
+
+  it('HAMMING_THRESHOLD is 4', () => {
+    expect(HAMMING_THRESHOLD).toBe(4)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -114,11 +199,13 @@ describe('defaultPhashComputer', () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('returns a PhashResult with a 16-char hex phash for a valid image', async () => {
+  it('returns a PhashResult with 16-char hex phash and dhash for a valid image', async () => {
     const result = await defaultPhashComputer(gradientJpeg)
     expect(result).not.toBeNull()
     expect(result!.phash).toHaveLength(16)
     expect(result!.phash).toMatch(/^[0-9a-f]{16}$/)
+    expect(result!.dhash).toHaveLength(16)
+    expect(result!.dhash).toMatch(/^[0-9a-f]{16}$/)
   })
 
   it('returns correct width and height', async () => {

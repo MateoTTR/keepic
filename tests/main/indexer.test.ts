@@ -37,6 +37,7 @@ const nullExifLoader: ExifLoader = async () => null
 /** Mock PhashComputer — returns a predictable hash based on the file path. */
 const mockPhashComputer: PhashComputer = async (filePath: string) => ({
   phash: Buffer.from(filePath).toString('hex').slice(0, 16).padEnd(16, '0'),
+  dhash: Buffer.from(filePath).toString('hex').slice(16, 32).padEnd(16, '0'),
   width: 100,
   height: 100
 })
@@ -51,12 +52,14 @@ const heicAwarePhashComputer: PhashComputer = async (filePath: string) => {
   if (ext === '.heic' || ext === '.heif') {
     return {
       phash: 'heic' + Buffer.from(filePath).toString('hex').slice(0, 12),
+      dhash: 'heic' + Buffer.from(filePath).toString('hex').slice(12, 24),
       width: 4032,
       height: 3024
     }
   }
   return {
     phash: Buffer.from(filePath).toString('hex').slice(0, 16).padEnd(16, '0'),
+    dhash: Buffer.from(filePath).toString('hex').slice(16, 32).padEnd(16, '0'),
     width: 100,
     height: 100
   }
@@ -581,7 +584,7 @@ describe('runIndexer', () => {
     let phashCalled = false
     const videoPhashComputer: PhashComputer = async () => {
       phashCalled = true
-      return { phash: 'should-not-be-used', width: 100, height: 100 }
+      return { phash: 'should-not-be-used', dhash: 'should-not-be-used', width: 100, height: 100 }
     }
     await runIndexer(libraryRoot, db, () => {}, {
       loadExif: nullExifLoader,

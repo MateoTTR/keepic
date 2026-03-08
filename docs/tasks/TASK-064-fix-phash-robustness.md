@@ -79,14 +79,63 @@ Before implementation, research alternative/complementary perceptual hashing and
 
 The goal is to combine 2-3 independent metrics so that a "match" requires agreement across multiple signals, reducing false positives without sacrificing cross-format detection (case 1).
 
+## Decided approach — Option A enriched: median threshold + dHash + Hamming tolerance
+
+Bibliography research completed. Evaluated: dHash, aHash, color histogram, SSIM, feature-based (ORB/SIFT), larger DCT hash (256-bit), median threshold, wavelet hash, Meta PDQ.
+
+### Two core changes
+
+1. **Median threshold** in DCT pHash (replaces mean):
+   - Eliminates "attractor" hashes (`8080808080808080`) by ensuring uniform 50/50 bit distribution
+   - Same approach as Meta's PDQ (production-validated at scale)
+   - 3-line code change in `dctHash()`, zero performance cost
+
+2. **dHash (difference hash)** as secondary hash:
+   - Encodes horizontal brightness gradients (spatial domain — orthogonal to DCT frequency domain)
+   - Computed from same 32×32 greyscale buffer — zero I/O overhead, ~0.1ms
+   - Stable cross-format: relative comparisons survive HEIC/JPEG decode micro-differences
+
+### Matching logic
+
+Two photos are duplicates iff:
+- **pHash Hamming distance ≤ 4** AND
+- **dHash Hamming distance ≤ 4**
+
+### Why NOT chosen
+
+- **aHash**: too correlated with pHash, no added discriminative power
+- **Color histogram**: cross-format instability (P3 vs sRGB gamut), requires extra RGB buffer
+- **SSIM**: comparison-based (not hashable), O(N) pairwise, only useful as tie-breaker
+- **Feature-based (ORB/SIFT)**: requires OpenCV (~100MB), poor on 32×32 thumbnails
+- **Larger hash (256-bit)**: more cross-format bit flips, DB migration pain, doesn't solve attractors alone
+
+### Performance budget
+
+| Step | Time | Change |
+|------|------|--------|
+| Sharp resize 32×32 greyscale | ~5-10ms | Unchanged |
+| 2D DCT (32×32) | ~2-3ms | Unchanged |
+| pHash extraction (median) | <0.1ms | 3 lines changed |
+| dHash extraction | <0.1ms | ~20 lines new |
+| **Total** | **~7-13ms** | **Within 50ms budget** |
+
+### DB impact
+
+- New column `dhash TEXT` in `photos` (migration 4→5)
+- All existing pHash values invalidated (mean→median) — re-index required after migration
+
 ## Deliverables
 
-- [ ] Research complementary perceptual similarity techniques (bibliography)
-- [ ] Decide on approach (A, B, or C) and which secondary metrics to use
-- [ ] Update dedup logic in `buildImportPlan` (planner) and `runDeduplicationScan` (scan handler)
-- [ ] Add secondary criteria (dimensions / aspect ratio / file size / additional hash)
+- [x] Research complementary perceptual similarity techniques (bibliography)
+- [x] Decide on approach: median threshold + dHash + Hamming tolerance ≤ 4
+- [ ] Update `phash.ts`: median threshold, dHash computation, Hamming distance helper
+- [ ] Update `heic.ts`: compute dHash from same 32×32 buffer
+- [ ] DB migration 4→5: add `dhash` column
+- [ ] Update `importer.ts`: Hamming tolerance + dual-hash matching in `buildImportPlan`
+- [ ] Update `dedup-scan-handler.ts`: Hamming-based grouping + dHash validation
+- [ ] Update `indexer.ts`: store dhash
 - [ ] Update tests with cross-format and collision test cases
-- [ ] Consider performance impact of non-exact matching
+- [ ] Run full test suite — 100% coverage
 
 ### Case 3 — False positive: three different photos all produce the same pHash
 
