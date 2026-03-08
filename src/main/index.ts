@@ -112,7 +112,14 @@ app.whenReady().then(() => {
   ipcMain.handle('config:select-library-folder', async () => {
     const result = await handleSelectLibraryFolder(
       dialog.showOpenDialog.bind(dialog),
-      configManager
+      configManager,
+      () => {
+        // Library changed — purge stale index data from the previous library.
+        if (database) {
+          database.db.exec('DELETE FROM photos')
+          database.db.exec('DELETE FROM import_jobs')
+        }
+      }
     )
 
     // If a valid library path was selected for the first time, open the database.
