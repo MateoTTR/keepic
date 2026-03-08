@@ -286,6 +286,7 @@
 | # | Title | Priority | Status | Session |
 |---|---|---|---|---|
 | [TASK-058-feat](TASK-058-feat-purge-db-on-library-change.md) | Purge database (photos + import_jobs) when library path changes | P3 | `[x]` | 2026-03-08-session-052 |
+| [TASK-059-feat](TASK-059-feat-tabbed-ui.md) | Refactor UI with tabbed navigation (Library / Import / Settings) | P2 | `[ ]` | — |
 
 ---
 
@@ -293,4 +294,3 @@
 
 - In-app browse/viewer (deferred)
 - Event folder creation UI
-- Settings screen (currently embedded in first-launch flow)
