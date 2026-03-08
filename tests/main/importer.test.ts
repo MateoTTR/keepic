@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { existsSync, mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, renameSync, copyFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { KeePicDatabase } from '../../src/main/db/database'
-import { scanSourceFiles, buildImportPlan, executeImportPlan } from '../../src/main/importer'
+import { scanSourceFiles, buildImportPlan, executeImportPlan, moveFileAcrossDevices } from '../../src/main/importer'
 import type { ExifLoader } from '../../src/main/exif'
 import type { PhashComputer } from '../../src/main/phash'
 import type { HeicConverter } from '../../src/main/heic'
@@ -1298,5 +1298,81 @@ describe('executeImportPlan', () => {
 
     // The default rmStagedFile should have deleted the staged file
     expect(existsSync(stagedFile)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// moveFileAcrossDevices
+// ---------------------------------------------------------------------------
+
+describe('moveFileAcrossDevices', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = makeTempDir()
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('moves a file within the same device via rename', () => {
+    const src = join(dir, 'src.txt')
+    const dest = join(dir, 'dest.txt')
+    writeFileSync(src, 'hello')
+
+    moveFileAcrossDevices(src, dest)
+
+    expect(existsSync(dest)).toBe(true)
+    expect(existsSync(src)).toBe(false)
+  })
+
+  it('falls back to copy+unlink when rename throws EXDEV', () => {
+    const src = join(dir, 'source.jpg')
+    const dest = join(dir, 'dest.jpg')
+    writeFileSync(src, 'image data')
+
+    let renameCalled = false
+    const fakeRename = (): void => {
+      renameCalled = true
+      const err = new Error('EXDEV: cross-device link not permitted') as NodeJS.ErrnoException
+      err.code = 'EXDEV'
+      throw err
+    }
+
+    moveFileAcrossDevices(src, dest, {
+      rename: fakeRename as typeof renameSync,
+      copy: copyFileSync,
+      unlink: unlinkSync
+    })
+
+    expect(renameCalled).toBe(true)
+    expect(existsSync(dest)).toBe(true)
+    expect(readFileSync(dest, 'utf-8')).toBe('image data')
+    expect(existsSync(src)).toBe(false)
+  })
+
+  it('rethrows non-EXDEV errors', () => {
+    const src = join(dir, 'source.jpg')
+    const dest = join(dir, 'dest.jpg')
+    writeFileSync(src, 'data')
+
+    const fakeRename = (): void => {
+      const err = new Error('EACCES: permission denied') as NodeJS.ErrnoException
+      err.code = 'EACCES'
+      throw err
+    }
+
+    expect(() =>
+      moveFileAcrossDevices(src, dest, {
+        rename: fakeRename as typeof renameSync,
+        copy: copyFileSync,
+        unlink: unlinkSync
+      })
+    ).toThrow('EACCES')
+
+    // Source should still exist — copy+unlink should NOT have been called
+    expect(existsSync(src)).toBe(true)
+    expect(existsSync(dest)).toBe(false)
   })
 })

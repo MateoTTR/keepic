@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, unlinkSync } from 'fs'
 import { basename, dirname, extname, join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -468,6 +468,28 @@ function upsertImportedPhoto(
 // Phase 2 — Execution
 // ---------------------------------------------------------------------------
 
+/**
+ * Move a file, falling back to copy+unlink when source and destination
+ * are on different devices/partitions (EXDEV).
+ */
+export function moveFileAcrossDevices(
+  src: string,
+  dest: string,
+  deps?: { rename: typeof renameSync; copy: typeof copyFileSync; unlink: typeof unlinkSync }
+): void {
+  const { rename, copy, unlink } = deps ?? { rename: renameSync, copy: copyFileSync, unlink: unlinkSync }
+  try {
+    rename(src, dest)
+  } catch (err: unknown) {
+    if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'EXDEV') {
+      copy(src, dest)
+      unlink(src)
+    } else {
+      throw err
+    }
+  }
+}
+
 export interface ExecutorOptions {
   convertHeic?: HeicConverter
   copyFile?: (src: string, dest: string) => void
@@ -507,7 +529,7 @@ export async function executeImportPlan(
 ): Promise<ImportResult> {
   const convertHeicFn = options.convertHeic ?? createHeicConverter()
   const copyFileFn = options.copyFile ?? ((src, dest) => copyFileSync(src, dest))
-  const moveFileFn = options.moveFile ?? ((src, dest) => renameSync(src, dest))
+  const moveFileFn = options.moveFile ?? moveFileAcrossDevices
   const mkdirpFn = options.mkdirp ?? ((p) => mkdirSync(p, { recursive: true }))
   const statFileFn = options.statFile ?? ((p) => statSync(p))
   const rmTempDirFn = options.rmTempDir ?? ((p) => rmSync(p, { recursive: true, force: true }))
