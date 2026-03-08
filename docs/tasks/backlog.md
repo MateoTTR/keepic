@@ -277,6 +277,7 @@
 | # | Title | Priority | Status | Session |
 |---|---|---|---|---|
 | [TASK-056-fix](TASK-056-fix-macos-icon.md) | Fix macOS icon — `icon.icns` was a 16x16 PNG instead of proper ICNS bundle | P1 | `[x]` | 2026-03-08-session-052 |
+| [TASK-057-fix](TASK-057-fix-sharp-macos-packaging.md) | Fix sharp native module loading on macOS — add `@img` packages to `asarUnpack` | P0 | `[x]` | 2026-03-08-session-052 |
 
 ---
 
