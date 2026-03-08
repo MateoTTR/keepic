@@ -10,6 +10,19 @@ import { dctHash, defaultPhashComputer, type PhashComputer, type PhashResult } f
 const SAMPLE_SIZE = 32
 
 // ---------------------------------------------------------------------------
+// Magic bytes detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true if the buffer starts with JPEG magic bytes (FF D8 FF).
+ * Used to detect .HEIC files that are actually JPEG (e.g. converted by
+ * Synology Photos, iCloud sync, or Google Picker API).
+ */
+export function isJpegBuffer(data: Buffer): boolean {
+  return data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff
+}
+
+// ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
 
@@ -38,7 +51,7 @@ export function isHeicFile(filePath: string): boolean {
 /** Injectable function type for checking file existence. */
 export type ExistsChecker = (path: string) => boolean
 
-const LIVE_PHOTO_VIDEO_EXTENSIONS = new Set(['.mov', '.mp4'])
+const LIVE_PHOTO_VIDEO_EXTENSIONS = new Set(['.mp4'])
 
 /**
  * Returns true if the file extension is a potential Live Photo video companion.
@@ -50,7 +63,7 @@ export function isLivePhotoVideoExtension(name: string): boolean {
 /**
  * Returns true if `videoPath` is the video component of an iPhone Live Photo.
  *
- * A .MOV or .MP4 file is a Live Photo companion when a photo still image
+ * A .MP4 file is a Live Photo companion when a photo still image
  * (.heic, .heif, .jpg, .jpeg) with the same stem exists in the same directory.
  *
  * @param videoPath   - Absolute path to the video file to check.
@@ -133,6 +146,13 @@ export function createHeicConverter(
 ): HeicConverter {
   return async (src: string, dest: string, quality: number): Promise<void> => {
     const buffer = readFile(src)
+
+    // Some .HEIC files are actually JPEG — sharp can handle them directly
+    if (isJpegBuffer(buffer)) {
+      await sharp(buffer).jpeg({ quality }).toFile(dest)
+      return
+    }
+
     const { data, width, height } = await decodeFn(buffer)
     await sharp(Buffer.from(data), { raw: { width, height, channels: 4 } })
       .jpeg({ quality })
@@ -175,8 +195,13 @@ export function createUniversalPhashComputer(
       return computeSharpPhash(filePath)
     }
 
-    // HEIC path: heic-decode (full image) → sharp raw → greyscale → dctHash
+    // HEIC path: check magic bytes first — some .HEIC files are actually JPEG
     const buffer = readFile(filePath)
+    if (isJpegBuffer(buffer)) {
+      return computeSharpPhash(filePath)
+    }
+
+    // Genuine HEIC: heic-decode (full image) → sharp raw → greyscale → dctHash
     const { data: rgba, width, height } = await decodeFn(buffer)
     const { data } = await sharp(Buffer.from(rgba), { raw: { width, height, channels: 4 } })
       .resize(SAMPLE_SIZE, SAMPLE_SIZE, { fit: 'fill' })

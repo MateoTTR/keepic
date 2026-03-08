@@ -127,14 +127,14 @@ describe('scanSourceFiles', () => {
     expect(candidates.some((p) => p.endsWith('video.mp4'))).toBe(true)
   })
 
-  it('detects Live Photo MOV companions and excludes them from candidates', () => {
+  it('keeps MOV files with sibling HEIC as normal candidates (MOV is not a Live Photo format)', () => {
     touch(join(sourceDir, 'IMG_1234.heic'))
     touch(join(sourceDir, 'IMG_1234.MOV'))
 
     const { candidates, livePhotoVideos } = scanSourceFiles(sourceDir)
     expect(candidates.some((p) => p.endsWith('IMG_1234.heic'))).toBe(true)
-    expect(livePhotoVideos.some((p) => p.endsWith('IMG_1234.MOV'))).toBe(true)
-    expect(candidates.some((p) => p.endsWith('IMG_1234.MOV'))).toBe(false)
+    expect(candidates.some((p) => p.endsWith('IMG_1234.MOV'))).toBe(true)
+    expect(livePhotoVideos.some((p) => p.endsWith('IMG_1234.MOV'))).toBe(false)
   })
 
   it('detects Live Photo MP4 companions with JPG sibling', () => {
@@ -219,13 +219,13 @@ describe('scanSourceFiles', () => {
     expect(skippedFiles[0].extension).toBeUndefined()
   })
 
-  it('reports Live Photo videos in skippedFiles', () => {
+  it('reports Live Photo MP4 videos in skippedFiles', () => {
     touch(join(sourceDir, 'IMG_1234.heic'))
-    touch(join(sourceDir, 'IMG_1234.MOV'))
+    touch(join(sourceDir, 'IMG_1234.mp4'))
     const { skippedFiles } = scanSourceFiles(sourceDir)
     const liveSkipped = skippedFiles.filter((f) => f.reason === 'live-photo')
     expect(liveSkipped).toHaveLength(1)
-    expect(liveSkipped[0].path).toContain('IMG_1234.MOV')
+    expect(liveSkipped[0].path).toContain('IMG_1234.mp4')
   })
 
   it('silently skips system and hidden files', () => {
@@ -500,9 +500,9 @@ describe('buildImportPlan', () => {
     expect(plan2.entries[0].errorMessage).toContain('42')
   })
 
-  it('counts Live Photo videos in livePhotosDiscarded', async () => {
+  it('counts Live Photo MP4 videos in livePhotosDiscarded', async () => {
     touch(join(sourceDir, 'IMG_1234.heic'))
-    touch(join(sourceDir, 'IMG_1234.MOV'))
+    touch(join(sourceDir, 'IMG_1234.mp4'))
 
     const plan = await buildImportPlan(sourceDir, libraryDir, db, baseConfig, () => {}, {
       loadExif: nullExifLoader,
