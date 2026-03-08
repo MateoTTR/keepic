@@ -28,14 +28,14 @@ function openDb(): KeePicDatabase {
 }
 
 /** Inserts a photo record into the DB (used to simulate existing library entries). */
-function seedPhoto(db: KeePicDatabase, path: string, phash: string): void {
+function seedPhoto(db: KeePicDatabase, path: string, phash: string, dhash?: string): void {
   db.db
     .prepare(
-      `INSERT INTO photos (path, filename, phash, date_taken, date_taken_source,
+      `INSERT INTO photos (path, filename, phash, dhash, date_taken, date_taken_source,
          width, height, file_size, file_mtime, source, google_id, imported_at, created_at)
-       VALUES (?, ?, ?, NULL, NULL, NULL, NULL, 0, '', 'local', NULL, '', '')`
+       VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, 0, '', 'local', NULL, '', '')`
     )
-    .run(path, path, phash)
+    .run(path, path, phash, dhash ?? null)
 }
 
 /** Returns all photos from the DB. */
@@ -68,6 +68,7 @@ const nullExifLoader: ExifLoader = async () => null
 /** Returns a fake hash derived from the file path — deterministic for tests. */
 const mockPhashComputer: PhashComputer = async (filePath: string) => ({
   phash: Buffer.from(filePath).toString('hex').slice(0, 16).padEnd(16, '0'),
+  dhash: Buffer.from(filePath).toString('hex').slice(16, 32).padEnd(16, '0'),
   width: 640,
   height: 480
 })
@@ -302,7 +303,7 @@ describe('buildImportPlan', () => {
     touch(srcPath)
 
     const phashResult = await mockPhashComputer(srcPath)
-    seedPhoto(db, 'library/existing.jpg', phashResult!.phash)
+    seedPhoto(db, 'library/existing.jpg', phashResult!.phash, phashResult!.dhash)
 
     const plan = await buildImportPlan(sourceDir, libraryDir, db, baseConfig, () => {}, {
       loadExif: nullExifLoader,
@@ -311,6 +312,23 @@ describe('buildImportPlan', () => {
 
     expect(plan.entries[0].status).toBe('duplicate')
     expect(plan.entries[0].duplicateOf).toBe('library/existing.jpg')
+  })
+
+  it('marks as duplicate when pHash matches library entry without dHash (legacy data)', async () => {
+    const srcPath = join(sourceDir, 'photo.jpg')
+    touch(srcPath)
+
+    const phashResult = await mockPhashComputer(srcPath)
+    // Seed without dhash — simulates pre-migration data
+    seedPhoto(db, 'library/legacy.jpg', phashResult!.phash)
+
+    const plan = await buildImportPlan(sourceDir, libraryDir, db, baseConfig, () => {}, {
+      loadExif: nullExifLoader,
+      computePhash: mockPhashComputer
+    })
+
+    expect(plan.entries[0].status).toBe('duplicate')
+    expect(plan.entries[0].duplicateOf).toBe('library/legacy.jpg')
   })
 
   it('does not mark as duplicate when pHash is null', async () => {
@@ -401,7 +419,7 @@ describe('buildImportPlan', () => {
       convertHeic: mockConvert,
       computePhash: async (fp) => {
         phashCalledWith = fp
-        return { phash: 'staged-phash', width: 100, height: 100 }
+        return { phash: 'staged-phash', dhash: 'staged-dhash', width: 100, height: 100 }
       },
       stagingDir
     })
@@ -431,7 +449,7 @@ describe('buildImportPlan', () => {
       },
       computePhash: async () => {
         regularPhashCalled = true
-        return { phash: 'should-not-matter', width: 0, height: 0 }
+        return { phash: 'should-not-matter', dhash: 'should-not-matter', width: 0, height: 0 }
       },
       stagingDir: join(sourceDir, 'staging'),
       mkdirp: () => {}
@@ -566,7 +584,7 @@ describe('buildImportPlan', () => {
       loadExif: nullExifLoader,
       computePhash: async () => {
         phashCalled = true
-        return { phash: 'should-not-be-used', width: 100, height: 100 }
+        return { phash: 'should-not-be-used', dhash: 'should-not-be-used', width: 100, height: 100 }
       }
     })
 
@@ -667,6 +685,7 @@ describe('executeImportPlan', () => {
       dateTaken: '2024-06-15T12:00:00.000Z',
       dateTakenSource: 'exif',
       phash: 'abc123',
+      dhash: 'def456',
       width: 640,
       height: 480,
       fileSize: 12345,
@@ -1062,6 +1081,7 @@ describe('executeImportPlan', () => {
           dateTaken: date.toISOString(),
           dateTakenSource: 'file_mtime',
           phash: null,
+          dhash: null,
           width: null,
           height: null,
           fileSize: 19,

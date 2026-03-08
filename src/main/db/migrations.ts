@@ -48,5 +48,11 @@ export const migrations: readonly string[] = [
   `ALTER TABLE photos ADD COLUMN media_type TEXT NOT NULL DEFAULT 'photo';`,
 
   // Migration 3 → 4: add job_id to link photos to their import job
-  `ALTER TABLE photos ADD COLUMN job_id INTEGER REFERENCES import_jobs(id);`
+  `ALTER TABLE photos ADD COLUMN job_id INTEGER REFERENCES import_jobs(id);`,
+
+  // Migration 4 → 5: add dhash for dual-hash deduplication (pHash + dHash)
+  // Also nullifies existing phash values since the threshold changed (mean → median).
+  // A re-index is required after this migration to recompute all hashes.
+  `ALTER TABLE photos ADD COLUMN dhash TEXT;
+   UPDATE photos SET phash = NULL WHERE phash IS NOT NULL;`
 ]

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'fs'
 import { extname } from 'path'
 import sharp from 'sharp'
-import { dctHash, defaultPhashComputer, type PhashComputer, type PhashResult } from './phash'
+import { dctHash, dHash, defaultPhashComputer, type PhashComputer, type PhashResult } from './phash'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -201,7 +201,7 @@ export function createUniversalPhashComputer(
       return computeSharpPhash(filePath)
     }
 
-    // Genuine HEIC: heic-decode (full image) → sharp raw → greyscale → dctHash
+    // Genuine HEIC: heic-decode (full image) → sharp raw → greyscale → dctHash + dHash
     const { data: rgba, width, height } = await decodeFn(buffer)
     const { data } = await sharp(Buffer.from(rgba), { raw: { width, height, channels: 4 } })
       .resize(SAMPLE_SIZE, SAMPLE_SIZE, { fit: 'fill' })
@@ -209,8 +209,10 @@ export function createUniversalPhashComputer(
       .raw()
       .toBuffer({ resolveWithObject: true })
 
+    const pixels = new Uint8Array(data)
     return {
-      phash: dctHash(new Uint8Array(data), SAMPLE_SIZE),
+      phash: dctHash(pixels, SAMPLE_SIZE),
+      dhash: dHash(pixels, SAMPLE_SIZE),
       width,
       height
     }

@@ -11,7 +11,7 @@ import {
   type HeicConverter
 } from './heic'
 import { readExifDate, defaultExifLoader, type ExifLoader } from './exif'
-import { type PhashComputer, type PhashResult } from './phash'
+import { type PhashComputer, type PhashResult, hammingDistance, HAMMING_THRESHOLD } from './phash'
 import { getDestinationPath } from '../shared/library-path'
 import { withConcurrency, DEFAULT_CONCURRENCY } from './concurrency'
 import { getMediaType, type MediaType } from '../shared/media-type'
@@ -277,6 +277,15 @@ export async function buildImportPlan(
   )
 
   // Phase 2: sequential — duplicate check, collision resolution, progress
+
+  // Preload all library photo hashes for Hamming-based matching
+  const libraryHashes = db.db
+    .prepare(
+      `SELECT path, phash, dhash FROM photos
+       WHERE deleted_at IS NULL AND media_type = 'photo' AND phash IS NOT NULL`
+    )
+    .all() as Array<{ path: string; phash: string; dhash: string | null }>
+
   const entries: ImportPlanEntry[] = []
   const seenDestPaths = new Set<string>()
 
@@ -303,13 +312,23 @@ export async function buildImportPlan(
         duplicateOf = match.path
       }
     } else if (r.phashResult?.phash) {
-      // Photo dedup: pHash
-      const match = db.db
-        .prepare('SELECT path FROM photos WHERE phash = ? AND deleted_at IS NULL LIMIT 1')
-        .get(r.phashResult.phash) as { path: string } | undefined
-      if (match) {
-        status = 'duplicate'
-        duplicateOf = match.path
+      // Photo dedup: dual-hash matching (pHash + dHash Hamming distance ≤ threshold)
+      for (const lib of libraryHashes) {
+        if (hammingDistance(r.phashResult.phash, lib.phash) <= HAMMING_THRESHOLD) {
+          // pHash matches — verify dHash if both are available
+          if (r.phashResult.dhash && lib.dhash) {
+            if (hammingDistance(r.phashResult.dhash, lib.dhash) <= HAMMING_THRESHOLD) {
+              status = 'duplicate'
+              duplicateOf = lib.path
+              break
+            }
+          } else {
+            // If either dHash is missing (legacy data), accept pHash match alone
+            status = 'duplicate'
+            duplicateOf = lib.path
+            break
+          }
+        }
       }
     }
 
@@ -349,6 +368,7 @@ export async function buildImportPlan(
       dateTaken: r.exifDate.toISOString(),
       dateTakenSource: r.exifSource as DateSource,
       phash: r.phashResult?.phash ?? null,
+      dhash: r.phashResult?.dhash ?? null,
       width: r.phashResult?.width ?? null,
       height: r.phashResult?.height ?? null,
       fileSize: r.fileSize,
@@ -420,6 +440,7 @@ function upsertImportedPhoto(
     relativePath: string
     filename: string
     phash: string | null
+    dhash: string | null
     dateTaken: string
     dateTakenSource: string
     width: number | null
@@ -434,12 +455,13 @@ function upsertImportedPhoto(
   db.db
     .prepare(
       `INSERT INTO photos
-         (path, filename, phash, date_taken, date_taken_source,
+         (path, filename, phash, dhash, date_taken, date_taken_source,
           width, height, file_size, file_mtime, source,
           google_id, imported_at, created_at, deleted_at, media_type, job_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', NULL, ?, ?, NULL, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', NULL, ?, ?, NULL, ?, ?)
        ON CONFLICT(path) DO UPDATE SET
          phash             = excluded.phash,
+         dhash             = excluded.dhash,
          date_taken        = excluded.date_taken,
          date_taken_source = excluded.date_taken_source,
          width             = excluded.width,
@@ -454,6 +476,7 @@ function upsertImportedPhoto(
       params.relativePath,
       params.filename,
       params.phash,
+      params.dhash,
       params.dateTaken,
       params.dateTakenSource,
       params.width,
@@ -673,6 +696,7 @@ export async function executeImportPlan(
         relativePath: result.entry.destinationRelativePath,
         filename: basename(result.entry.destinationRelativePath),
         phash: result.entry.phash,
+        dhash: result.entry.dhash,
         dateTaken: result.entry.dateTaken,
         dateTakenSource: result.entry.dateTakenSource,
         width: result.entry.width,

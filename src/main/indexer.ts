@@ -154,6 +154,7 @@ function upsertPhoto(
     path: string
     filename: string
     phash: string | null
+    dhash: string | null
     dateTaken: string | null
     dateTakenSource: string | null
     width: number | null
@@ -167,12 +168,13 @@ function upsertPhoto(
   db.db
     .prepare(
       `INSERT INTO photos
-         (path, filename, phash, date_taken, date_taken_source,
+         (path, filename, phash, dhash, date_taken, date_taken_source,
           width, height, file_size, file_mtime, source,
           google_id, imported_at, created_at, deleted_at, media_type)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', NULL, ?, ?, NULL, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', NULL, ?, ?, NULL, ?)
        ON CONFLICT(path) DO UPDATE SET
          phash             = excluded.phash,
+         dhash             = excluded.dhash,
          date_taken        = excluded.date_taken,
          date_taken_source = excluded.date_taken_source,
          width             = excluded.width,
@@ -186,6 +188,7 @@ function upsertPhoto(
       params.path,
       params.filename,
       params.phash,
+      params.dhash,
       params.dateTaken,
       params.dateTakenSource,
       params.width,
@@ -346,6 +349,7 @@ export async function runIndexer(
         path: result.relativePath,
         filename: basename(result.relativePath),
         phash: data.phashResult?.phash ?? null,
+        dhash: data.phashResult?.dhash ?? null,
         dateTaken: data.exifDate.toISOString(),
         dateTakenSource: data.exifSource,
         width: data.phashResult?.width ?? null,
