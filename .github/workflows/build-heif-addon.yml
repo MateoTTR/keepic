@@ -87,7 +87,7 @@ jobs:
         with:
           name: prebuild-${{ matrix.platform }}-${{ matrix.arch }}
           path: packages/heif-decode/prebuilds/
-          retention-days: 90
+          retention-days: 14
 
   # Combine all prebuilds into one artifact
   combine:
@@ -107,4 +107,4 @@ jobs:
         with:
           name: heif-decode-prebuilds
           path: prebuilds/
-          retention-days: 90
+          retention-days: 14
