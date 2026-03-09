@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte'
   import Button from '../components/ui/Button.svelte'
   import PhotoThumbnail from '../components/PhotoThumbnail.svelte'
+  import LazyGroup from '../components/LazyGroup.svelte'
   import { thumbnailUrl } from '../utils'
   import type { DuplicateGroup } from '../../../shared/types'
 
@@ -88,33 +89,41 @@
 
       <div class="space-y-6">
         {#each visibleGroups as group, i (group.phash)}
-          <div class="space-y-2">
-            <p class="text-sm font-semibold text-gray-700">
-              Group {i + 1} — {group.photos.length} identical {group.mediaType === 'video' ? 'videos' : 'photos'}
-            </p>
-            <div class="flex flex-wrap gap-4">
-              {#each group.photos as photo (photo.path)}
-                <div class="w-48 space-y-2">
-                  <PhotoThumbnail
-                    src={thumbnailUrl({ libraryRelPath: photo.path })}
-                    alt={photo.filename}
-                    class="w-full aspect-auto"
-                  />
-                  <div class="space-y-0.5">
-                    <p class="font-mono text-xs text-gray-700 truncate" title={photo.path}>{photo.path}</p>
-                    <p class="text-xs text-gray-400">
-                      {formatBytes(photo.fileSize)}
-                      <span class="mx-1">&middot;</span>
-                      {formatDate(photo.dateTaken)}
-                    </p>
-                    <Button variant="outline" size="sm" onclick={() => window.keepic.shell.revealLibraryFile(photo.path)}>
-                      Reveal in Folder
-                    </Button>
+          <LazyGroup>
+            <div class="space-y-2">
+              <p class="text-sm font-semibold text-gray-700">
+                Group {i + 1} — {group.photos.length} identical {group.mediaType === 'video' ? 'videos' : 'photos'}
+              </p>
+              <div class="flex flex-wrap gap-4">
+                {#each group.photos as photo (photo.path)}
+                  {@const lastSlash = photo.path.lastIndexOf('/')}
+                  {@const folder = lastSlash >= 0 ? photo.path.slice(0, lastSlash) : ''}
+                  {@const filename = lastSlash >= 0 ? photo.path.slice(lastSlash + 1) : photo.path}
+                  <div class="w-48 space-y-2">
+                    <PhotoThumbnail
+                      src={thumbnailUrl({ libraryRelPath: photo.path })}
+                      alt={photo.filename}
+                      class="w-full aspect-auto"
+                    />
+                    <div class="space-y-0.5">
+                      <p class="font-mono text-xs text-gray-900 font-medium break-all" title={photo.path}>{filename}</p>
+                      {#if folder}
+                        <p class="font-mono text-[10px] text-gray-400 truncate" title={folder}>{folder}</p>
+                      {/if}
+                      <p class="text-xs text-gray-400">
+                        {formatBytes(photo.fileSize)}
+                        <span class="mx-1">&middot;</span>
+                        {formatDate(photo.dateTaken)}
+                      </p>
+                      <Button variant="outline" size="sm" onclick={() => window.keepic.shell.revealLibraryFile(photo.path)}>
+                        Reveal in Folder
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              {/each}
+                {/each}
+              </div>
             </div>
-          </div>
+          </LazyGroup>
         {/each}
       </div>
 
