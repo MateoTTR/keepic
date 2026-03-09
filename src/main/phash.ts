@@ -154,7 +154,7 @@ export function hammingDistance(a: string, b: string): number {
 }
 
 /** Maximum Hamming distance for two hashes to be considered a match. */
-export const HAMMING_THRESHOLD = 4
+export const HAMMING_THRESHOLD = 0
 
 // ---------------------------------------------------------------------------
 // Injectable dependency type
