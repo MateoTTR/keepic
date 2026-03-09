@@ -142,8 +142,8 @@ describe('hammingDistance', () => {
     expect(hammingDistance('ffffffffffffffff', '0000000000000000')).toBe(64)
   })
 
-  it('HAMMING_THRESHOLD is 4', () => {
-    expect(HAMMING_THRESHOLD).toBe(4)
+  it('HAMMING_THRESHOLD is 0 (exact match)', () => {
+    expect(HAMMING_THRESHOLD).toBe(0)
   })
 })
 

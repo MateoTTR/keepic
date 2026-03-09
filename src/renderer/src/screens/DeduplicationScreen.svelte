@@ -42,9 +42,14 @@
     return new Date(iso).toLocaleDateString()
   }
 
+  const PAGE_SIZE = 20
+  let visibleCount: number = $state(PAGE_SIZE)
+
   const totalPhotos = $derived(groups.reduce((sum, g) => sum + g.photos.length, 0))
   const photoGroups = $derived(groups.filter((g) => g.mediaType === 'photo').length)
   const videoGroups = $derived(groups.filter((g) => g.mediaType === 'video').length)
+  const visibleGroups = $derived(groups.slice(0, visibleCount))
+  const hasMore = $derived(visibleCount < groups.length)
   const progressPercent = $derived(
     progress && progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0
   )
@@ -82,7 +87,7 @@
       <hr class="border-gray-200" />
 
       <div class="space-y-6">
-        {#each groups as group, i (group.phash)}
+        {#each visibleGroups as group, i (group.phash)}
           <div class="space-y-2">
             <p class="text-sm font-semibold text-gray-700">
               Group {i + 1} — {group.photos.length} identical {group.mediaType === 'video' ? 'videos' : 'photos'}
@@ -113,10 +118,18 @@
         {/each}
       </div>
 
+      {#if hasMore}
+        <div class="flex justify-center">
+          <Button variant="outline" onclick={() => (visibleCount += PAGE_SIZE)}>
+            Show more ({groups.length - visibleCount} remaining)
+          </Button>
+        </div>
+      {/if}
+
       <hr class="border-gray-200" />
 
       <p class="text-sm text-gray-500">
-        To remove duplicates: delete the unwanted files from the shared folder, then re-index.
+        Showing {visibleGroups.length} of {groups.length} groups. To remove duplicates: delete the unwanted files from the shared folder, then re-index.
       </p>
     {/if}
   </div>

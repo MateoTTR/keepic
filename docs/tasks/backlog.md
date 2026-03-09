@@ -293,6 +293,7 @@
 | [TASK-063-feat](TASK-063-feat-import-history-details.md) | Enrich import history with source and date range of imported media | P3 | `[x]` | 2026-03-08-session-055 |
 | [TASK-064-fix](TASK-064-fix-phash-robustness.md) | Improve pHash deduplication robustness — fix false negatives (cross-format 1-bit diff) and false positives (DCT collisions) | P2 | `[x]` | 2026-03-08-session-056 |
 | [TASK-065-perf](TASK-065-perf-dedup-scan-multiindex.md) | Optimize dedup scan with Multi-Index Hashing + worker thread — fix UI freeze on Windows | P0 | `[x]` | 2026-03-09-session-057 |
+| [TASK-066-fix](TASK-066-fix-dedup-false-positives-pagination.md) | Fix dedup scan false positives (HAMMING_THRESHOLD 4→0) + paginate results UI | P0 | `[x]` | 2026-03-09-session-058 |
 
 ---
 

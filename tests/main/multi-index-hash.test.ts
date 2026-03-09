@@ -89,9 +89,9 @@ describe('isDualHashMatch', () => {
     expect(isDualHashMatch('abcd000000000000', 'ef01000000000000', 'abcd000000000000', 'ef01000000000000')).toBe(true)
   })
 
-  it('returns true for pHash within threshold and dHash within threshold', () => {
-    // 1-bit pHash difference, identical dHash
-    expect(isDualHashMatch('ff00802080008080', 'aabb000000000000', 'ff00800080008080', 'aabb000000000000')).toBe(true)
+  it('returns false for 1-bit pHash difference (threshold is 0)', () => {
+    // 1-bit pHash difference, identical dHash — rejected because threshold is 0
+    expect(isDualHashMatch('ff00802080008080', 'aabb000000000000', 'ff00800080008080', 'aabb000000000000')).toBe(false)
   })
 
   it('returns false when pHash exceeds threshold', () => {
@@ -112,11 +112,11 @@ describe('isDualHashMatch', () => {
     expect(isDualHashMatch('abcd000000000000', null, 'abcd000000000000', null)).toBe(true)
   })
 
-  it('returns true when pHash is within threshold and dHash A is null', () => {
-    expect(isDualHashMatch('ff00802080008080', null, 'ff00800080008080', 'aabb000000000000')).toBe(true)
+  it('returns false when pHash has 1-bit diff and dHash A is null (threshold is 0)', () => {
+    expect(isDualHashMatch('ff00802080008080', null, 'ff00800080008080', 'aabb000000000000')).toBe(false)
   })
 
-  it('returns true when pHash is within threshold and dHash B is null', () => {
-    expect(isDualHashMatch('ff00802080008080', 'aabb000000000000', 'ff00800080008080', null)).toBe(true)
+  it('returns false when pHash has 1-bit diff and dHash B is null (threshold is 0)', () => {
+    expect(isDualHashMatch('ff00802080008080', 'aabb000000000000', 'ff00800080008080', null)).toBe(false)
   })
 })
