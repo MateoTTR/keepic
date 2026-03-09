@@ -320,7 +320,7 @@ describe('findDuplicateGroups', () => {
   // Hamming-based dual-hash matching tests
   // -------------------------------------------------------------------------
 
-  it('groups photos with pHash Hamming distance ≤ 4 and matching dHash (cross-format)', () => {
+  it('rejects photos with 1-bit pHash difference (threshold is 0, exact match only)', () => {
     const db = makeDb()
     insertPhoto(db, {
       path: '/lib/img.heic',
@@ -336,8 +336,7 @@ describe('findDuplicateGroups', () => {
     })
     const { photoRows } = handleScanDuplicates(db)
     const result = findDuplicateGroups(photoRows)
-    expect(result).toHaveLength(1)
-    expect(result[0].photos).toHaveLength(2)
+    expect(result).toEqual([])
   })
 
   it('rejects photos with same pHash but different dHash (false positive)', () => {
@@ -376,20 +375,18 @@ describe('findDuplicateGroups', () => {
     expect(result).toHaveLength(1)
   })
 
-  it('groups chain of near-matches via Union-Find (A~B, B~C → all in one group)', () => {
+  it('does not chain near-matches at threshold 0 (each pHash must be identical)', () => {
     const db = makeDb()
     insertPhoto(db, { path: '/lib/a.jpg', phash: '0000000000000000', dhash: '0000000000000000', importedAt: '2025-01-01T00:00:00Z' })
     insertPhoto(db, { path: '/lib/b.jpg', phash: '1000000000000000', dhash: '0000000000000000', importedAt: '2025-02-01T00:00:00Z' })
     insertPhoto(db, { path: '/lib/c.jpg', phash: '1100000000000000', dhash: '0000000000000000', importedAt: '2025-03-01T00:00:00Z' })
-    insertPhoto(db, { path: '/lib/d.jpg', phash: '1110000000000000', dhash: '0000000000000000', importedAt: '2025-04-01T00:00:00Z' })
-    insertPhoto(db, { path: '/lib/e.jpg', phash: '0000000000000001', dhash: '0000000000000000', importedAt: '2025-05-01T00:00:00Z' })
     const { photoRows } = handleScanDuplicates(db)
     const result = findDuplicateGroups(photoRows)
-    expect(result).toHaveLength(1)
-    expect(result[0].photos).toHaveLength(5)
+    // All have different pHash → no groups at threshold 0
+    expect(result).toEqual([])
   })
 
-  it('rejects photos when pHash Hamming distance > 4', () => {
+  it('rejects photos when pHash differs by any amount (threshold 0)', () => {
     const db = makeDb()
     insertPhoto(db, {
       path: '/lib/unrelated1.jpg',
