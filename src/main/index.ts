@@ -21,6 +21,7 @@ import { handleGetAuthStatus, handleConnect, handleDisconnect } from './ipc/goog
 import { handleGetLibraryStats } from './ipc/library-stats-handler'
 import { cleanupStaleTempDirs } from './temp-cleanup'
 import { handleScanDuplicates } from './ipc/dedup-scan-handler'
+import type { DuplicateGroup } from '../shared/types'
 import {
   handleGetLastDownloadDate,
   handleCleanupDownloadDir,
@@ -99,7 +100,11 @@ app.whenReady().then(() => {
   const plannerWorkerPath = join(__dirname, 'workers/planner.worker.js')
   const importerWorkerPath = join(__dirname, 'workers/importer.worker.js')
   const pickerWorkerPath = join(__dirname, 'workers/google-photos-picker.worker.js')
+  const dedupWorkerPath = join(__dirname, 'workers/dedup-scanner.worker.js')
   const dbPath = join(app.getPath('userData'), 'index.db')
+
+  // Track the running dedup scanner worker.
+  let dedupWorker: Worker | null = null
 
   // --- Config IPC ---
 
@@ -216,9 +221,32 @@ app.whenReady().then(() => {
     return handleGetLibraryStats(database)
   })
 
-  ipcMain.handle('library:scan-duplicates', () => {
-    if (!database) return []
-    return handleScanDuplicates(database)
+  ipcMain.handle('library:scan-duplicates', (event) => {
+    if (!database) return { started: false }
+    if (dedupWorker) return { alreadyRunning: true }
+
+    // Query photo rows on main thread (fast SQL), then offload matching to worker
+    const { photoRows, videoGroups } = handleScanDuplicates(database)
+
+    dedupWorker = new Worker(dedupWorkerPath)
+
+    dedupWorker.on('message', (msg: { type: string; processed?: number; total?: number; groups?: DuplicateGroup[] }) => {
+      if (msg.type === 'progress') {
+        event.sender.send('library:dedup-progress', { processed: msg.processed, total: msg.total })
+      } else if (msg.type === 'complete') {
+        const allGroups = [...(msg.groups ?? []), ...videoGroups]
+        event.sender.send('library:dedup-complete', { groups: allGroups })
+        dedupWorker = null
+      }
+    })
+
+    dedupWorker.on('error', (err: Error) => {
+      event.sender.send('library:dedup-complete', { groups: [], error: err.message })
+      dedupWorker = null
+    })
+
+    dedupWorker.postMessage({ type: 'scan', photoRows })
+    return { started: true }
   })
 
   // --- Shell IPC ---

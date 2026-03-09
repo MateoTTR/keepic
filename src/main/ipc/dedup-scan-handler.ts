@@ -1,6 +1,6 @@
 import type { KeePicDatabase } from '../db/database'
 import type { DuplicateGroup, DuplicatePhoto } from '../../shared/types'
-import { hammingDistance, HAMMING_THRESHOLD } from '../phash'
+import { MultiIndexHash, isDualHashMatch } from '../multi-index-hash'
 
 // ---------------------------------------------------------------------------
 // Union-Find for grouping duplicates
@@ -39,20 +39,41 @@ class UnionFind {
 }
 
 // ---------------------------------------------------------------------------
+// Photo row type
+// ---------------------------------------------------------------------------
+
+export interface PhotoRow {
+  path: string
+  filename: string
+  file_size: number | null
+  date_taken: string | null
+  imported_at: string
+  phash: string
+  dhash: string | null
+}
+
+// ---------------------------------------------------------------------------
 // handleScanDuplicates
 // ---------------------------------------------------------------------------
 
 /**
  * Scans the local SQLite index for photos that are visually identical duplicates.
  *
- * Uses dual-hash matching: two photos are duplicates when both their pHash AND
- * dHash Hamming distances are ≤ HAMMING_THRESHOLD (4 bits).
+ * Uses Multi-Index Hashing (pigeonhole principle) for O(n) candidate lookup
+ * instead of O(n²) brute-force, then dual-hash matching (pHash + dHash
+ * Hamming distance ≤ HAMMING_THRESHOLD) on candidates only.
  *
  * The scan is read-only: no files are deleted, no DB rows are modified.
  * Users resolve duplicates manually (delete files → re-index via TASK-021).
  */
-export function handleScanDuplicates(db: KeePicDatabase): DuplicateGroup[] {
-  // Photo duplicates: dual-hash Hamming matching
+/**
+ * Queries the database and returns raw photo rows (for the worker) and
+ * already-computed video duplicate groups (SQL-based, instant).
+ */
+export function handleScanDuplicates(db: KeePicDatabase): {
+  photoRows: PhotoRow[]
+  videoGroups: DuplicateGroup[]
+} {
   const photoRows = db.db
     .prepare(
       `SELECT path, filename, file_size, date_taken, imported_at, phash, dhash
@@ -62,62 +83,9 @@ export function handleScanDuplicates(db: KeePicDatabase): DuplicateGroup[] {
          AND phash IS NOT NULL
        ORDER BY imported_at ASC`
     )
-    .all() as Array<{
-    path: string
-    filename: string
-    file_size: number | null
-    date_taken: string | null
-    imported_at: string
-    phash: string
-    dhash: string | null
-  }>
+    .all() as PhotoRow[]
 
-  // Use Union-Find to group photos by Hamming proximity
-  const uf = new UnionFind(photoRows.length)
-  for (let i = 0; i < photoRows.length; i++) {
-    for (let j = i + 1; j < photoRows.length; j++) {
-      if (hammingDistance(photoRows[i].phash, photoRows[j].phash) <= HAMMING_THRESHOLD) {
-        // pHash matches — verify dHash if both available
-        const di = photoRows[i].dhash
-        const dj = photoRows[j].dhash
-        if (di && dj) {
-          if (hammingDistance(di, dj) <= HAMMING_THRESHOLD) {
-            uf.union(i, j)
-          }
-        } else {
-          // Legacy data without dHash: accept pHash match alone
-          uf.union(i, j)
-        }
-      }
-    }
-  }
-
-  // Collect groups (only those with 2+ members)
-  const groupMap = new Map<number, number[]>()
-  for (let i = 0; i < photoRows.length; i++) {
-    const root = uf.find(i)
-    const group = groupMap.get(root)
-    if (group) {
-      group.push(i)
-    } else {
-      groupMap.set(root, [i])
-    }
-  }
-
-  const photoGroups: DuplicateGroup[] = []
-  for (const indices of groupMap.values()) {
-    if (indices.length < 2) continue
-    const photos: DuplicatePhoto[] = indices.map((i) => ({
-      path: photoRows[i].path,
-      filename: photoRows[i].filename,
-      fileSize: photoRows[i].file_size,
-      dateTaken: photoRows[i].date_taken,
-      importedAt: photoRows[i].imported_at
-    }))
-    photoGroups.push({ phash: photoRows[indices[0]].phash, mediaType: 'photo', photos })
-  }
-
-  // Video duplicates: group by filename + file_size
+  // Video duplicates: group by filename + file_size (unchanged — SQL-based)
   const videoRows = db.db
     .prepare(
       `SELECT path, filename, file_size, date_taken, imported_at
@@ -161,5 +129,68 @@ export function handleScanDuplicates(db: KeePicDatabase): DuplicateGroup[] {
     videoGroups.push({ phash: key, mediaType: 'video', photos })
   }
 
-  return [...photoGroups, ...videoGroups]
+  return { photoRows, videoGroups }
+}
+
+/**
+ * Finds duplicate photo groups using Multi-Index Hashing + Union-Find.
+ *
+ * Exported for use in the dedup scanner worker (receives rows via postMessage).
+ */
+export function findDuplicateGroups(
+  photoRows: PhotoRow[],
+  onProgress?: (processed: number, total: number) => void
+): DuplicateGroup[] {
+  // Build multi-index on pHash
+  const mi = new MultiIndexHash()
+  for (let i = 0; i < photoRows.length; i++) {
+    mi.insert(photoRows[i].phash, i)
+  }
+
+  // For each photo, query candidates and union matches
+  const uf = new UnionFind(photoRows.length)
+  for (let i = 0; i < photoRows.length; i++) {
+    const candidates = mi.queryCandidates(photoRows[i].phash)
+    for (const j of candidates) {
+      if (j <= i) continue // only compare forward (j > i)
+      if (
+        isDualHashMatch(
+          photoRows[i].phash,
+          photoRows[i].dhash,
+          photoRows[j].phash,
+          photoRows[j].dhash
+        )
+      ) {
+        uf.union(i, j)
+      }
+    }
+    if (onProgress) onProgress(i + 1, photoRows.length)
+  }
+
+  // Collect groups (only those with 2+ members)
+  const groupMap = new Map<number, number[]>()
+  for (let i = 0; i < photoRows.length; i++) {
+    const root = uf.find(i)
+    const group = groupMap.get(root)
+    if (group) {
+      group.push(i)
+    } else {
+      groupMap.set(root, [i])
+    }
+  }
+
+  const photoGroups: DuplicateGroup[] = []
+  for (const indices of groupMap.values()) {
+    if (indices.length < 2) continue
+    const photos: DuplicatePhoto[] = indices.map((i) => ({
+      path: photoRows[i].path,
+      filename: photoRows[i].filename,
+      fileSize: photoRows[i].file_size,
+      dateTaken: photoRows[i].date_taken,
+      importedAt: photoRows[i].imported_at
+    }))
+    photoGroups.push({ phash: photoRows[indices[0]].phash, mediaType: 'photo', photos })
+  }
+
+  return photoGroups
 }
