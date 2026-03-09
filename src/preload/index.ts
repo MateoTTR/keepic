@@ -50,8 +50,21 @@ const keepicAPI = {
     },
     getStats: (): Promise<LibraryStats | null> =>
       ipcRenderer.invoke('library:get-stats') as Promise<LibraryStats | null>,
-    scanDuplicates: (): Promise<DuplicateGroup[]> =>
-      ipcRenderer.invoke('library:scan-duplicates') as Promise<DuplicateGroup[]>
+    scanDuplicates: (): Promise<
+      { started: boolean } | { alreadyRunning: true } | { started: false }
+    > => ipcRenderer.invoke('library:scan-duplicates'),
+    onDedupProgress: (callback: (p: { processed: number; total: number }) => void): void => {
+      ipcRenderer.on('library:dedup-progress', (_event, data) => callback(data))
+    },
+    onDedupComplete: (
+      callback: (r: { groups: DuplicateGroup[]; error?: string }) => void
+    ): void => {
+      ipcRenderer.on('library:dedup-complete', (_event, data) => callback(data))
+    },
+    removeDedupListeners: (): void => {
+      ipcRenderer.removeAllListeners('library:dedup-progress')
+      ipcRenderer.removeAllListeners('library:dedup-complete')
+    }
   },
   import: {
     selectSourceFolder: (): Promise<{ cancelled: boolean; path?: string }> =>
