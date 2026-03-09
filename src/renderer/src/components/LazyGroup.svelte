@@ -11,12 +11,9 @@
 
   let visible: boolean = $state(false)
   let measured: boolean = $state(false)
-  let lastHeight: number = $state(0)
-
-  $effect(() => {
-    if (!measured) lastHeight = estimatedHeight
-  })
+  let measuredHeight: number = $state(0)
   let container: HTMLDivElement | undefined = $state()
+  const placeholderHeight = $derived(measured ? measuredHeight : estimatedHeight)
   let observer: IntersectionObserver | undefined
 
   onMount(() => {
@@ -28,7 +25,7 @@
             visible = true
           } else {
             if (measured && container) {
-              lastHeight = container.offsetHeight
+              measuredHeight = container.offsetHeight
             }
             visible = false
           }
@@ -45,7 +42,7 @@
 
   function onContentMount(node: HTMLDivElement): { destroy: () => void } {
     measured = true
-    lastHeight = node.offsetHeight
+    measuredHeight = node.offsetHeight
     return { destroy() {} }
   }
 </script>
@@ -56,6 +53,6 @@
       {@render children()}
     </div>
   {:else}
-    <div style="height: {lastHeight}px" class="bg-gray-50 rounded"></div>
+    <div style="height: {placeholderHeight}px" class="bg-gray-50 rounded"></div>
   {/if}
 </div>

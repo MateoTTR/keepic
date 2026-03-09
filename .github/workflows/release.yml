@@ -46,7 +46,7 @@ jobs:
         with:
           name: keepic-windows
           path: dist-electron/*.exe
-          retention-days: 30
+          retention-days: 5
 
   build-macos:
     name: Build macOS DMG
@@ -85,7 +85,7 @@ jobs:
         with:
           name: keepic-macos
           path: dist-electron/*.dmg
-          retention-days: 30
+          retention-days: 5
 
   create-release:
     name: Create GitHub Release

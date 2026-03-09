@@ -51,9 +51,28 @@ filename first, folder second.
 - [x] Test that pagination + viewport-awareness work together
 - [x] 100% coverage maintained
 
-## Files likely to change
+## Bug fix (v0.5.4)
+
+**Race condition in LazyGroup placeholder height**: `lastHeight` was initialized to
+`$state(0)` with a `$effect` setting it to `estimatedHeight` (280px). But `$effect`
+runs AFTER `onMount`, so when IntersectionObserver fired its initial callback, all
+placeholders were 0px tall — they all fit in the viewport — all groups were mounted
+simultaneously, causing the same freeze.
+
+**Fix**: replaced `$state(0)` + `$effect` with a `$derived` that returns
+`estimatedHeight` immediately until the real height is measured. This ensures
+placeholders have the correct height from the first render, before the observer starts.
+
+Also reduced CI artifact retention (releases 30→5d, prebuilds 90→14d, coverage 7→3d)
+and added `cleanup-caches.yml` to auto-purge caches when branches are deleted.
+
+## Files changed
 
 | File | Change |
 |------|--------|
 | `src/renderer/src/screens/DeduplicationScreen.svelte` | Viewport observer + path display |
-| `src/renderer/src/components/LazyGroup.svelte` | New — IntersectionObserver wrapper (optional) |
+| `src/renderer/src/components/LazyGroup.svelte` | New — IntersectionObserver wrapper; fix placeholder height race |
+| `.github/workflows/ci.yml` | Reduce coverage artifact retention to 3d |
+| `.github/workflows/release.yml` | Reduce build artifact retention to 5d |
+| `.github/workflows/build-heif-addon.yml` | Reduce prebuild artifact retention to 14d |
+| `.github/workflows/cleanup-caches.yml` | New — auto-purge caches on branch deletion |
