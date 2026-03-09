@@ -14,7 +14,8 @@ export default defineConfig({
           'workers/planner.worker': resolve('src/workers/planner.worker.ts'),
           'workers/importer.worker': resolve('src/workers/importer.worker.ts'),
           'workers/google-photos-picker.worker': resolve('src/workers/google-photos-picker.worker.ts'),
-          'workers/heic-decode.worker': resolve('src/workers/heic-decode.worker.ts')
+          'workers/heic-decode.worker': resolve('src/workers/heic-decode.worker.ts'),
+          'workers/dedup-scanner.worker': resolve('src/workers/dedup-scanner.worker.ts')
         }
       }
     },

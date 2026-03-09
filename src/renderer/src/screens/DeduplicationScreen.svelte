@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import Button from '../components/ui/Button.svelte'
   import PhotoThumbnail from '../components/PhotoThumbnail.svelte'
   import { thumbnailUrl } from '../utils'
@@ -13,10 +13,21 @@
 
   let loading: boolean = $state(true)
   let groups: DuplicateGroup[] = $state([])
+  let progress: { processed: number; total: number } | null = $state(null)
 
-  onMount(async () => {
-    groups = await window.keepic.library.scanDuplicates()
-    loading = false
+  onMount(() => {
+    window.keepic.library.onDedupProgress((p) => {
+      progress = p
+    })
+    window.keepic.library.onDedupComplete((result) => {
+      groups = result.groups
+      loading = false
+    })
+    window.keepic.library.scanDuplicates()
+  })
+
+  onDestroy(() => {
+    window.keepic.library.removeDedupListeners()
   })
 
   function formatBytes(bytes: number | null): string {
@@ -34,6 +45,9 @@
   const totalPhotos = $derived(groups.reduce((sum, g) => sum + g.photos.length, 0))
   const photoGroups = $derived(groups.filter((g) => g.mediaType === 'photo').length)
   const videoGroups = $derived(groups.filter((g) => g.mediaType === 'video').length)
+  const progressPercent = $derived(
+    progress && progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0
+  )
 </script>
 
 <div class="space-y-6">
@@ -44,7 +58,20 @@
     </div>
 
     {#if loading}
-      <p class="text-gray-500">Scanning…</p>
+      {#if progress}
+        <div class="space-y-2">
+          <p class="text-gray-500">Scanning for duplicates… {progressPercent}%</p>
+          <div class="w-full bg-gray-200 rounded-full h-2">
+            <div
+              class="bg-blue-600 h-2 rounded-full transition-all duration-200"
+              style="width: {progressPercent}%"
+            ></div>
+          </div>
+          <p class="text-xs text-gray-400">{progress.processed} / {progress.total} photos analyzed</p>
+        </div>
+      {:else}
+        <p class="text-gray-500">Loading…</p>
+      {/if}
     {:else if groups.length === 0}
       <p class="text-gray-700">✓ No duplicates found</p>
     {:else}

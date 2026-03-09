@@ -36,7 +36,12 @@ export interface KeePickAPI {
     onIndexProgress: (callback: (progress: IndexProgress) => void) => void
     onIndexComplete: (callback: (result: IndexCompleteEvent) => void) => void
     getStats: () => Promise<LibraryStats | null>
-    scanDuplicates: () => Promise<DuplicateGroup[]>
+    scanDuplicates: () => Promise<
+      { started: boolean } | { alreadyRunning: true } | { started: false }
+    >
+    onDedupProgress: (callback: (p: { processed: number; total: number }) => void) => void
+    onDedupComplete: (callback: (r: { groups: DuplicateGroup[]; error?: string }) => void) => void
+    removeDedupListeners: () => void
   }
   import: {
     selectSourceFolder: () => Promise<{ cancelled: boolean; path?: string }>

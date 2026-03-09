@@ -11,7 +11,8 @@ import {
   type HeicConverter
 } from './heic'
 import { readExifDate, defaultExifLoader, type ExifLoader } from './exif'
-import { type PhashComputer, type PhashResult, hammingDistance, HAMMING_THRESHOLD } from './phash'
+import { type PhashComputer, type PhashResult } from './phash'
+import { MultiIndexHash, isDualHashMatch } from './multi-index-hash'
 import { getDestinationPath } from '../shared/library-path'
 import { withConcurrency, DEFAULT_CONCURRENCY } from './concurrency'
 import { getMediaType, type MediaType } from '../shared/media-type'
@@ -278,13 +279,18 @@ export async function buildImportPlan(
 
   // Phase 2: sequential — duplicate check, collision resolution, progress
 
-  // Preload all library photo hashes for Hamming-based matching
+  // Preload all library photo hashes and build Multi-Index for fast Hamming lookup
   const libraryHashes = db.db
     .prepare(
       `SELECT path, phash, dhash FROM photos
        WHERE deleted_at IS NULL AND media_type = 'photo' AND phash IS NOT NULL`
     )
     .all() as Array<{ path: string; phash: string; dhash: string | null }>
+
+  const libraryIndex = new MultiIndexHash()
+  for (let i = 0; i < libraryHashes.length; i++) {
+    libraryIndex.insert(libraryHashes[i].phash, i)
+  }
 
   const entries: ImportPlanEntry[] = []
   const seenDestPaths = new Set<string>()
@@ -312,22 +318,14 @@ export async function buildImportPlan(
         duplicateOf = match.path
       }
     } else if (r.phashResult?.phash) {
-      // Photo dedup: dual-hash matching (pHash + dHash Hamming distance ≤ threshold)
-      for (const lib of libraryHashes) {
-        if (hammingDistance(r.phashResult.phash, lib.phash) <= HAMMING_THRESHOLD) {
-          // pHash matches — verify dHash if both are available
-          if (r.phashResult.dhash && lib.dhash) {
-            if (hammingDistance(r.phashResult.dhash, lib.dhash) <= HAMMING_THRESHOLD) {
-              status = 'duplicate'
-              duplicateOf = lib.path
-              break
-            }
-          } else {
-            // If either dHash is missing (legacy data), accept pHash match alone
-            status = 'duplicate'
-            duplicateOf = lib.path
-            break
-          }
+      // Photo dedup: Multi-Index lookup + dual-hash verification
+      const candidates = libraryIndex.queryCandidates(r.phashResult.phash)
+      for (const ci of candidates) {
+        const lib = libraryHashes[ci]
+        if (isDualHashMatch(r.phashResult.phash, r.phashResult.dhash, lib.phash, lib.dhash)) {
+          status = 'duplicate'
+          duplicateOf = lib.path
+          break
         }
       }
     }
