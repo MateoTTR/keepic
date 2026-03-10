@@ -1,0 +1,73 @@
+name: Warm HEIF deps cache
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/heif-decode/scripts/build-deps.sh'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  cache-windows:
+    name: Cache HEIF deps (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Check existing cache
+        id: check
+        uses: actions/cache/restore@v4
+        with:
+          path: packages/heif-decode/deps
+          key: heif-deps-windows-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
+          lookup-only: true
+
+      - name: Build static HEIF dependencies
+        if: steps.check.outputs.cache-hit != 'true'
+        shell: bash
+        working-directory: packages/heif-decode
+        run: bash scripts/build-deps.sh
+
+      - name: Save cache
+        if: steps.check.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: packages/heif-decode/deps
+          key: heif-deps-windows-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
+
+  cache-macos:
+    name: Cache HEIF deps (macOS)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check existing cache
+        id: check
+        uses: actions/cache/restore@v4
+        with:
+          path: packages/heif-decode/deps
+          key: heif-deps-macos-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
+          lookup-only: true
+
+      - name: Build static HEIF dependencies
+        if: steps.check.outputs.cache-hit != 'true'
+        shell: bash
+        working-directory: packages/heif-decode
+        run: bash scripts/build-deps.sh
+
+      - name: Save cache
+        if: steps.check.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: packages/heif-decode/deps
+          key: heif-deps-macos-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}

@@ -29,9 +29,8 @@ jobs:
       - name: Install dependencies (skip native addon build)
         run: npm ci --ignore-scripts
 
-      - name: Cache HEIF static libraries
-        id: heif-cache
-        uses: actions/cache@v4
+      - name: Restore HEIF static libraries from cache
+        uses: actions/cache/restore@v4
         with:
           path: packages/heif-decode/deps
           key: heif-deps-windows-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
@@ -39,10 +38,14 @@ jobs:
             heif-deps-windows-
 
       - name: Build static HEIF dependencies
-        if: ${{ !hashFiles('packages/heif-decode/deps/lib/libheif.lib') }}
         shell: bash
         working-directory: packages/heif-decode
-        run: bash scripts/build-deps.sh
+        run: |
+          if [ -f deps/lib/libheif.lib ]; then
+            echo "HEIF deps already cached, skipping build"
+          else
+            bash scripts/build-deps.sh
+          fi
 
       - name: Build HEIF addon with static linking
         working-directory: packages/heif-decode
@@ -78,9 +81,8 @@ jobs:
       - name: Install dependencies (skip native addon build)
         run: npm ci --ignore-scripts
 
-      - name: Cache HEIF static libraries
-        id: heif-cache
-        uses: actions/cache@v4
+      - name: Restore HEIF static libraries from cache
+        uses: actions/cache/restore@v4
         with:
           path: packages/heif-decode/deps
           key: heif-deps-macos-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
@@ -88,10 +90,14 @@ jobs:
             heif-deps-macos-
 
       - name: Build static HEIF dependencies
-        if: ${{ !hashFiles('packages/heif-decode/deps/lib/libheif.a') }}
         shell: bash
         working-directory: packages/heif-decode
-        run: bash scripts/build-deps.sh
+        run: |
+          if [ -f deps/lib/libheif.a ]; then
+            echo "HEIF deps already cached, skipping build"
+          else
+            bash scripts/build-deps.sh
+          fi
 
       - name: Build HEIF addon with static linking
         working-directory: packages/heif-decode
