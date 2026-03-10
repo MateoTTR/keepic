@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { createProtocolHandler, createThrottle, type LibraryPathGetter } from '../../src/main/protocol'
+import {
+  createProtocolHandler,
+  createThrottle,
+  type LibraryPathGetter
+} from '../../src/main/protocol'
 import type { ThumbnailGenerator } from '../../src/main/thumbnail'
 
 // ---------------------------------------------------------------------------
@@ -237,9 +241,15 @@ describe('createThrottle', () => {
     const results: number[] = []
 
     await Promise.all([
-      throttle(async () => { results.push(1) }),
-      throttle(async () => { results.push(2) }),
-      throttle(async () => { results.push(3) })
+      throttle(async () => {
+        results.push(1)
+      }),
+      throttle(async () => {
+        results.push(2)
+      }),
+      throttle(async () => {
+        results.push(3)
+      })
     ])
 
     expect(results).toHaveLength(3)
@@ -250,10 +260,11 @@ describe('createThrottle', () => {
     const order: number[] = []
     const resolvers: Array<() => void> = []
 
-    const makeTask = (id: number) => throttle(async () => {
-      await new Promise<void>((r) => resolvers.push(r))
-      order.push(id)
-    })
+    const makeTask = (id: number) =>
+      throttle(async () => {
+        await new Promise<void>((r) => resolvers.push(r))
+        order.push(id)
+      })
 
     const p1 = makeTask(1)
     const p2 = makeTask(2)

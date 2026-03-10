@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
+  import { SvelteSet } from 'svelte/reactivity'
   import Button from '../components/ui/Button.svelte'
   import PhotoThumbnail from '../components/PhotoThumbnail.svelte'
   import { thumbnailUrl } from '../utils'
@@ -16,7 +17,7 @@
   let progress: { processed: number; total: number } | null = $state(null)
 
   // Track which groups are expanded (show thumbnails)
-  let expandedSet: Set<string> = $state(new Set())
+  let expandedSet = new SvelteSet<string>()
 
   onMount(() => {
     window.keepic.library.onDedupProgress((p) => {
@@ -46,21 +47,21 @@
   }
 
   function toggleGroup(phash: string): void {
-    const next = new Set(expandedSet)
-    if (next.has(phash)) {
-      next.delete(phash)
+    if (expandedSet.has(phash)) {
+      expandedSet.delete(phash)
     } else {
-      next.add(phash)
+      expandedSet.add(phash)
     }
-    expandedSet = next
   }
 
   function expandAll(): void {
-    expandedSet = new Set(groups.map((g) => g.phash))
+    for (const g of groups) {
+      expandedSet.add(g.phash)
+    }
   }
 
   function collapseAll(): void {
-    expandedSet = new Set()
+    expandedSet.clear()
   }
 
   const totalPhotos = $derived(groups.reduce((sum, g) => sum + g.photos.length, 0))
