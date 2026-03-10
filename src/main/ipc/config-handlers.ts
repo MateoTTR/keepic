@@ -29,6 +29,15 @@ export function handleSetHeicConfig(
   return configManager.get()
 }
 
+/** Updates the dedup Hamming distance threshold and persists immediately. */
+export function handleSetDedupThreshold(
+  configManager: ConfigManager,
+  threshold: number
+): AppConfig {
+  configManager.setDedupThreshold(threshold)
+  return configManager.get()
+}
+
 /**
  * Validates that the given path exists and is a directory.
  * Returns { valid: true } or { valid: false, error: string }.

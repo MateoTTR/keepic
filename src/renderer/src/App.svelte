@@ -166,6 +166,10 @@
   function handleHeicModeChange(mode: AppConfig['heic']['mode']): void {
     if (config) config = { ...config, heic: { ...config.heic, mode } }
   }
+
+  function handleDedupThresholdChange(threshold: number): void {
+    if (config) config = { ...config, dedupThreshold: threshold }
+  }
 </script>
 
 {#if config && !config.libraryPath}
@@ -255,6 +259,8 @@
           <SettingsTab
             heicMode={config?.heic.mode ?? 'keep'}
             onHeicModeChange={handleHeicModeChange}
+            dedupThreshold={config?.dedupThreshold ?? 0}
+            onDedupThresholdChange={handleDedupThresholdChange}
           />
         {/if}
       </div>
