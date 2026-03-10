@@ -78,20 +78,22 @@ export class MultiIndexHash {
 
 /**
  * Returns true if two photos are considered duplicates based on dual-hash matching:
- * - pHash Hamming distance ≤ HAMMING_THRESHOLD, AND
- * - dHash Hamming distance ≤ HAMMING_THRESHOLD (if both available)
+ * - pHash Hamming distance ≤ threshold, AND
+ * - dHash Hamming distance ≤ threshold (if both available)
  *
  * If either dHash is null (legacy data), pHash match alone is accepted.
+ * The threshold parameter defaults to HAMMING_THRESHOLD (0) when not provided.
  */
 export function isDualHashMatch(
   phashA: string,
   dhashA: string | null,
   phashB: string,
-  dhashB: string | null
+  dhashB: string | null,
+  threshold: number = HAMMING_THRESHOLD
 ): boolean {
-  if (hammingDistance(phashA, phashB) > HAMMING_THRESHOLD) return false
+  if (hammingDistance(phashA, phashB) > threshold) return false
   if (dhashA && dhashB) {
-    return hammingDistance(dhashA, dhashB) <= HAMMING_THRESHOLD
+    return hammingDistance(dhashA, dhashB) <= threshold
   }
   // Legacy data without dHash: accept pHash match alone
   return true

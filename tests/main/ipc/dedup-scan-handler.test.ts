@@ -431,7 +431,7 @@ describe('findDuplicateGroups', () => {
       { path: '/b.jpg', filename: 'b.jpg', file_size: 100, date_taken: null, imported_at: '2025-02-01', phash: 'abc1230000000000', dhash: 'def4560000000000' }
     ]
     const progressCalls: Array<[number, number]> = []
-    findDuplicateGroups(rows, (processed, total) => {
+    findDuplicateGroups(rows, 0, (processed, total) => {
       progressCalls.push([processed, total])
     })
     expect(progressCalls).toHaveLength(2)

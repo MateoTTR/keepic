@@ -10,10 +10,10 @@
 import { parentPort } from 'worker_threads'
 import { findDuplicateGroups, type PhotoRow } from '../main/ipc/dedup-scan-handler'
 
-parentPort!.on('message', (msg: { type: string; photoRows: PhotoRow[] }) => {
+parentPort!.on('message', (msg: { type: string; photoRows: PhotoRow[]; threshold?: number }) => {
   if (msg.type !== 'scan') return
 
-  const groups = findDuplicateGroups(msg.photoRows, (processed, total) => {
+  const groups = findDuplicateGroups(msg.photoRows, msg.threshold ?? 0, (processed, total) => {
     // Throttle progress to avoid flooding the main thread — every 5%
     if (processed % Math.max(1, Math.floor(total / 20)) === 0 || processed === total) {
       parentPort!.postMessage({ type: 'progress', processed, total })
