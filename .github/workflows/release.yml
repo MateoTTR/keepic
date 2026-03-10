@@ -36,7 +36,7 @@ jobs:
             heif-deps-windows-
 
       - name: Build static HEIF dependencies
-        if: steps.heif-cache.outputs.cache-hit != 'true'
+        if: ${{ !hashFiles('packages/heif-decode/deps/lib/libheif.lib') }}
         shell: bash
         working-directory: packages/heif-decode
         run: bash scripts/build-deps.sh
@@ -85,7 +85,7 @@ jobs:
             heif-deps-macos-
 
       - name: Build static HEIF dependencies
-        if: steps.heif-cache.outputs.cache-hit != 'true'
+        if: ${{ !hashFiles('packages/heif-decode/deps/lib/libheif.a') }}
         shell: bash
         working-directory: packages/heif-decode
         run: bash scripts/build-deps.sh
