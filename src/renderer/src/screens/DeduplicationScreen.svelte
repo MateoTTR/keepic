@@ -19,29 +19,15 @@
   // Track which groups are expanded (show thumbnails)
   let expandedSet = new SvelteSet<string>()
 
-  // Temporary debug info for Windows release testing (no DevTools available)
-  let debugLog: string[] = $state([])
-  function dbg(msg: string): void {
-    debugLog = [...debugLog, `[${new Date().toISOString().slice(11, 23)}] ${msg}`]
-  }
-
   onMount(() => {
-    dbg('onMount — registering IPC listeners')
     window.keepic.library.onDedupProgress((p) => {
       progress = p
-      if (p.processed === p.total) {
-        dbg(`onDedupProgress: ${p.processed}/${p.total} (100%)`)
-      }
     })
     window.keepic.library.onDedupComplete((result) => {
-      dbg(`onDedupComplete: ${result.groups.length} groups received`)
       groups = result.groups
       loading = false
-      dbg(`loading set to false, groups.length=${groups.length}`)
     })
-    window.keepic.library.scanDuplicates().then((r) => {
-      dbg(`scanDuplicates returned: ${JSON.stringify(r)}`)
-    })
+    window.keepic.library.scanDuplicates()
   })
 
   onDestroy(() => {
@@ -198,14 +184,5 @@
         {groups.length} groups displayed. Click a group to preview thumbnails. To remove duplicates: delete the unwanted files from the shared folder, then re-index.
       </p>
     {/if}
-
-    <!-- Temporary debug panel for Windows release testing (TASK-069) -->
-    <div class="mt-4 p-3 bg-gray-100 border border-gray-300 rounded text-xs font-mono text-gray-600">
-      <p class="font-semibold mb-1">Debug (TASK-069)</p>
-      <p>loading={String(loading)} | groups.length={groups.length} | progress={progress ? `${progress.processed}/${progress.total}` : 'null'}</p>
-      {#each debugLog as line (line)}
-        <p>{line}</p>
-      {/each}
-    </div>
   </div>
 </div>
