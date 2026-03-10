@@ -296,6 +296,7 @@
 | [TASK-066-fix](TASK-066-fix-dedup-false-positives-pagination.md) | Fix dedup scan false positives (HAMMING_THRESHOLD 4→0) + paginate results UI | P0 | `[x]` | 2026-03-09-session-058 |
 | [TASK-067-feat](TASK-067-feat-dedup-ui-improvements.md) | Dedup UI improvements — IntersectionObserver virtualization + better path display | P2 | `[x]` | 2026-03-09-session-059 |
 | [TASK-068-fix](TASK-068-fix-dedup-lazy-rendering.md) | Fix dedup lazy rendering — IntersectionObserver virtualization not working, UI still freezes at ~320 groups | P0 | `[x]` | 2026-03-10-session-060 |
+| [TASK-069-fix](TASK-069-fix-dedup-results-freeze.md) | Fix dedup scan results not rendering — UI freezes at 100% progress, never transitions to results view | P0 | `[ ]` | |
 
 ---
 
