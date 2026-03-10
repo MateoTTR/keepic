@@ -101,6 +101,7 @@ describe('handleScanDuplicates', () => {
     })
     const result = handleScanDuplicates(db)
     expect(result.videoGroups).toHaveLength(1)
+    expect(result.videoGroups[0].id).toBe('video-0')
     expect(result.videoGroups[0].mediaType).toBe('video')
     expect(result.videoGroups[0].photos).toHaveLength(2)
     expect(result.videoGroups[0].photos[0].path).toBe('/lib/2024/clip.mp4')
@@ -178,6 +179,7 @@ describe('findDuplicateGroups', () => {
     const { photoRows } = handleScanDuplicates(db)
     const result = findDuplicateGroups(photoRows)
     expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('photo-0')
     expect(result[0].phash).toBe('abc1230000000000')
     expect(result[0].photos).toHaveLength(2)
     expect(result[0].photos[0].path).toBe('/lib/a.jpg')
@@ -193,6 +195,24 @@ describe('findDuplicateGroups', () => {
     const result = findDuplicateGroups(photoRows)
     expect(result).toHaveLength(1)
     expect(result[0].photos).toHaveLength(3)
+  })
+
+  it('groups have unique sequential ids even when pHash collides', () => {
+    const db = makeDb()
+    // Two groups with same pHash but different dHash (the bug scenario from TASK-069)
+    insertPhoto(db, { path: '/lib/a1.jpg', phash: 'samephash0000000', dhash: '1111111111111111', importedAt: '2025-01-01T00:00:00Z' })
+    insertPhoto(db, { path: '/lib/a2.jpg', phash: 'samephash0000000', dhash: '1111111111111111', importedAt: '2025-02-01T00:00:00Z' })
+    insertPhoto(db, { path: '/lib/b1.jpg', phash: 'samephash0000000', dhash: 'ffffffffffffffff', importedAt: '2025-03-01T00:00:00Z' })
+    insertPhoto(db, { path: '/lib/b2.jpg', phash: 'samephash0000000', dhash: 'ffffffffffffffff', importedAt: '2025-04-01T00:00:00Z' })
+    const { photoRows } = handleScanDuplicates(db)
+    const result = findDuplicateGroups(photoRows)
+    expect(result).toHaveLength(2)
+    // Both have the same phash but unique ids
+    expect(result[0].phash).toBe('samephash0000000')
+    expect(result[1].phash).toBe('samephash0000000')
+    expect(result[0].id).not.toBe(result[1].id)
+    expect(result[0].id).toBe('photo-0')
+    expect(result[1].id).toBe('photo-1')
   })
 
   it('two duplicate groups: both groups returned', () => {

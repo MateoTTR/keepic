@@ -126,7 +126,7 @@ export function handleScanDuplicates(db: KeePicDatabase): {
     }
   }
   for (const [key, photos] of videoGroupMap) {
-    videoGroups.push({ phash: key, mediaType: 'video', photos })
+    videoGroups.push({ id: `video-${videoGroups.length}`, phash: key, mediaType: 'video', photos })
   }
 
   return { photoRows, videoGroups }
@@ -189,7 +189,7 @@ export function findDuplicateGroups(
       dateTaken: photoRows[i].date_taken,
       importedAt: photoRows[i].imported_at
     }))
-    photoGroups.push({ phash: photoRows[indices[0]].phash, mediaType: 'photo', photos })
+    photoGroups.push({ id: `photo-${photoGroups.length}`, phash: photoRows[indices[0]].phash, mediaType: 'photo', photos })
   }
 
   return photoGroups
