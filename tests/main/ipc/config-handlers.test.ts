@@ -7,6 +7,7 @@ import { ConfigManager } from '../../../src/main/config'
 import {
   handleGetConfig,
   handleSetHeicConfig,
+  handleSetDedupThreshold,
   validateLibraryPath,
   handleSelectLibraryFolder,
   type ShowOpenDialogFn,
@@ -91,6 +92,45 @@ describe('handleSetHeicConfig', () => {
     const cfg2 = new ConfigManager(cfgDir)
     cfg2.load()
     expect(cfg2.get().heic).toEqual({ mode: 'convert', jpegQuality: 75 })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// handleSetDedupThreshold
+// ---------------------------------------------------------------------------
+
+describe('handleSetDedupThreshold', () => {
+  let cfgDir: string
+  let cfg: ConfigManager
+
+  beforeEach(() => {
+    cfgDir = makeTempDir()
+    cfg = new ConfigManager(cfgDir)
+    cfg.load()
+  })
+
+  afterEach(() => {
+    rmSync(cfgDir, { recursive: true, force: true })
+  })
+
+  it('updates threshold and returns updated config', () => {
+    const result = handleSetDedupThreshold(cfg, 3)
+    expect(result.dedupThreshold).toBe(3)
+  })
+
+  it('does not modify other config fields', () => {
+    cfg.setLibraryPath('/some/path')
+    cfg.setHeicConfig({ mode: 'convert', jpegQuality: 80 })
+    handleSetDedupThreshold(cfg, 2)
+    expect(cfg.get().libraryPath).toBe('/some/path')
+    expect(cfg.get().heic).toEqual({ mode: 'convert', jpegQuality: 80 })
+  })
+
+  it('persists the change to disk', () => {
+    handleSetDedupThreshold(cfg, 4)
+    const cfg2 = new ConfigManager(cfgDir)
+    cfg2.load()
+    expect(cfg2.get().dedupThreshold).toBe(4)
   })
 })
 

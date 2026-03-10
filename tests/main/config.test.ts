@@ -15,7 +15,8 @@ function makeTempDir(): string {
 
 const DEFAULT: AppConfig = {
   libraryPath: null,
-  heic: { mode: 'keep', jpegQuality: 90 }
+  heic: { mode: 'keep', jpegQuality: 90 },
+  dedupThreshold: 2
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +108,20 @@ describe('mergeWithDefaults', () => {
     expect(result.heic).toEqual(DEFAULT.heic)
   })
 
+  it('applies dedupThreshold when valid number', () => {
+    const result = mergeWithDefaults({ dedupThreshold: 3 })
+    expect(result.dedupThreshold).toBe(3)
+  })
+
+  it('clamps dedupThreshold to 0–4 range', () => {
+    expect(mergeWithDefaults({ dedupThreshold: -1 }).dedupThreshold).toBe(0)
+    expect(mergeWithDefaults({ dedupThreshold: 10 }).dedupThreshold).toBe(4)
+  })
+
+  it('ignores dedupThreshold when wrong type', () => {
+    expect(mergeWithDefaults({ dedupThreshold: 'bad' }).dedupThreshold).toBe(2)
+  })
+
   it('returns a deep copy (mutating result does not affect a second call)', () => {
     const a = mergeWithDefaults({})
     a.heic.jpegQuality = 1
@@ -156,7 +171,8 @@ describe('ConfigManager', () => {
   it('load() reads a valid config.json', () => {
     const stored: AppConfig = {
       libraryPath: '/mnt/nas/photos',
-      heic: { mode: 'convert', jpegQuality: 75 }
+      heic: { mode: 'convert', jpegQuality: 75 },
+      dedupThreshold: 0
     }
     writeFileSync(join(tmpDir, 'config.json'), JSON.stringify(stored), 'utf-8')
     cfg.load()
@@ -252,6 +268,28 @@ describe('ConfigManager', () => {
     expect(cfg.get().libraryPath).toBe('/mnt/nas')
   })
 
+  // --- setDedupThreshold() ---
+
+  it('setDedupThreshold() updates the threshold in memory', () => {
+    cfg.setDedupThreshold(3)
+    expect(cfg.get().dedupThreshold).toBe(3)
+  })
+
+  it('setDedupThreshold() clamps to 0–4 range', () => {
+    cfg.setDedupThreshold(-1)
+    expect(cfg.get().dedupThreshold).toBe(0)
+    cfg.setDedupThreshold(5)
+    expect(cfg.get().dedupThreshold).toBe(4)
+    cfg.setDedupThreshold(2.7)
+    expect(cfg.get().dedupThreshold).toBe(3)
+  })
+
+  it('setDedupThreshold() persists to disk immediately', () => {
+    cfg.setDedupThreshold(2)
+    const raw = readFileSync(join(tmpDir, 'config.json'), 'utf-8')
+    expect(JSON.parse(raw).dedupThreshold).toBe(2)
+  })
+
   // --- round-trip ---
 
   it('load() after setLibraryPath() round-trips correctly', () => {
@@ -278,7 +316,8 @@ describe('ConfigManager', () => {
     cfg2.load()
     expect(cfg2.get()).toEqual({
       libraryPath: '/backup',
-      heic: { mode: 'convert', jpegQuality: 60 }
+      heic: { mode: 'convert', jpegQuality: 60 },
+      dedupThreshold: 2
     })
   })
 })

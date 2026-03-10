@@ -21,7 +21,9 @@ const keepicAPI = {
     selectLibraryFolder: (): Promise<SelectLibraryFolderResult> =>
       ipcRenderer.invoke('config:select-library-folder'),
     setHeicConfig: (heic: AppConfig['heic']): Promise<AppConfig> =>
-      ipcRenderer.invoke('config:set-heic-config', { heic })
+      ipcRenderer.invoke('config:set-heic-config', { heic }),
+    setDedupThreshold: (threshold: number): Promise<AppConfig> =>
+      ipcRenderer.invoke('config:set-dedup-threshold', { threshold })
   },
   library: {
     startIndex: (): Promise<{ started?: boolean; alreadyRunning?: boolean; error?: string }> =>

@@ -139,6 +139,7 @@ export function handleScanDuplicates(db: KeePicDatabase): {
  */
 export function findDuplicateGroups(
   photoRows: PhotoRow[],
+  threshold: number = 0,
   onProgress?: (processed: number, total: number) => void
 ): DuplicateGroup[] {
   // Build multi-index on pHash
@@ -158,7 +159,8 @@ export function findDuplicateGroups(
           photoRows[i].phash,
           photoRows[i].dhash,
           photoRows[j].phash,
-          photoRows[j].dhash
+          photoRows[j].dhash,
+          threshold
         )
       ) {
         uf.union(i, j)

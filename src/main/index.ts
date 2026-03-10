@@ -8,7 +8,8 @@ import { createProtocolHandler } from './protocol'
 import {
   handleGetConfig,
   handleSelectLibraryFolder,
-  handleSetHeicConfig
+  handleSetHeicConfig,
+  handleSetDedupThreshold
 } from './ipc/config-handlers'
 import {
   handleSelectSourceFolder,
@@ -112,6 +113,12 @@ app.whenReady().then(() => {
 
   ipcMain.handle('config:set-heic-config', (_event, { heic }: { heic: AppConfig['heic'] }) =>
     handleSetHeicConfig(configManager, heic)
+  )
+
+  ipcMain.handle(
+    'config:set-dedup-threshold',
+    (_event, { threshold }: { threshold: number }) =>
+      handleSetDedupThreshold(configManager, threshold)
   )
 
   ipcMain.handle('config:select-library-folder', async () => {
@@ -248,7 +255,7 @@ app.whenReady().then(() => {
       dedupWorker = null
     })
 
-    dedupWorker.postMessage({ type: 'scan', photoRows })
+    dedupWorker.postMessage({ type: 'scan', photoRows, threshold: configManager.get().dedupThreshold })
     return { started: true }
   })
 

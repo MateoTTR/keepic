@@ -77,7 +77,8 @@ const nullPhashComputer: PhashComputer = async () => null
 
 const baseConfig: AppConfig = {
   libraryPath: '/unused',
-  heic: { mode: 'keep', jpegQuality: 90 }
+  heic: { mode: 'keep', jpegQuality: 90 },
+  dedupThreshold: 2
 }
 
 const heicConvertConfig: AppConfig = {

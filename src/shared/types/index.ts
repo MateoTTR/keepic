@@ -42,6 +42,7 @@ export interface AppConfig {
     mode: 'keep' | 'convert'
     jpegQuality: number
   }
+  dedupThreshold: number
 }
 
 export interface SelectLibraryFolderResult {

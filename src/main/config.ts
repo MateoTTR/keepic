@@ -7,7 +7,8 @@ const DEFAULT_CONFIG: AppConfig = {
   heic: {
     mode: 'keep',
     jpegQuality: 90
-  }
+  },
+  dedupThreshold: 2
 }
 
 /**
@@ -67,6 +68,12 @@ export class ConfigManager {
     this.config = { ...this.config, heic }
     this.save()
   }
+
+  /** Sets the dedup Hamming distance threshold and persists immediately. */
+  setDedupThreshold(threshold: number): void {
+    this.config = { ...this.config, dedupThreshold: Math.max(0, Math.min(4, Math.round(threshold))) }
+    this.save()
+  }
 }
 
 /**
@@ -108,6 +115,10 @@ export function mergeWithDefaults(parsed: unknown): AppConfig {
     if (typeof old['jpegQuality'] === 'number') {
       result.heic.jpegQuality = old['jpegQuality']
     }
+  }
+
+  if (typeof obj['dedupThreshold'] === 'number') {
+    result.dedupThreshold = Math.max(0, Math.min(4, Math.round(obj['dedupThreshold'])))
   }
 
   return result
