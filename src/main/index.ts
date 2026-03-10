@@ -231,6 +231,7 @@ app.whenReady().then(() => {
     dedupWorker = new Worker(dedupWorkerPath)
 
     dedupWorker.on('message', (msg: { type: string; processed?: number; total?: number; groups?: DuplicateGroup[] }) => {
+      if (event.sender.isDestroyed()) return
       if (msg.type === 'progress') {
         event.sender.send('library:dedup-progress', { processed: msg.processed, total: msg.total })
       } else if (msg.type === 'complete') {
@@ -241,7 +242,9 @@ app.whenReady().then(() => {
     })
 
     dedupWorker.on('error', (err: Error) => {
-      event.sender.send('library:dedup-complete', { groups: [], error: err.message })
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('library:dedup-complete', { groups: [], error: err.message })
+      }
       dedupWorker = null
     })
 
