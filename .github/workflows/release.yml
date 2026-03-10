@@ -32,6 +32,8 @@ jobs:
         with:
           path: packages/heif-decode/deps
           key: heif-deps-windows-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
+          restore-keys: |
+            heif-deps-windows-
 
       - name: Build static HEIF dependencies
         if: steps.heif-cache.outputs.cache-hit != 'true'
@@ -79,6 +81,8 @@ jobs:
         with:
           path: packages/heif-decode/deps
           key: heif-deps-macos-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
+          restore-keys: |
+            heif-deps-macos-
 
       - name: Build static HEIF dependencies
         if: steps.heif-cache.outputs.cache-hit != 'true'
