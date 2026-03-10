@@ -1,60 +1,60 @@
-# TASK-068-fix — Fix dedup lazy rendering (IntersectionObserver not working)
+# TASK-068-fix — Fix dedup lazy rendering (complete rewrite)
 
 ## Context
 
 TASK-067 added `LazyGroup` (IntersectionObserver wrapper) to DeduplicationScreen to
-virtualize off-screen duplicate groups. Two attempts were made:
+virtualize off-screen duplicate groups. Two attempts were made (v0.5.3, v0.5.4) but
+neither works — the UI still freezes at ~320 groups.
 
-1. **v0.5.3**: initial implementation — `$state(estimatedHeight)` triggered a Svelte
-   warning, so it was changed to `$state(0)` + `$effect`.
-2. **v0.5.4**: fixed the placeholder height race (`$state(0)` → `$derived`) so
-   placeholders start at 280px instead of 0px.
+## Root cause analysis (session review)
 
-**Neither version works in practice.** The UI still freezes at ~320 groups. The user
-reports that images load immediately on "Show more" (no lazy behavior), and that
-native `<img loading="lazy">` which worked before v0.5 (tabbed UI refactoring) no
-longer seems to have any effect.
+Five interacting issues identified:
 
-## Investigation needed
+1. **Thumbnail flood**: 320 groups x ~3 photos = ~960 `keepic-photo://thumbnail`
+   requests hit the main process simultaneously. Each triggers `sharp().resize()` on
+   the libuv thread pool (4 threads). The 956 queued requests cause multi-second
+   main-process freeze.
 
-Before writing any fix, a **deep code review** of the rendering pipeline is needed:
+2. **320 IntersectionObservers**: Each `LazyGroup` creates its own observer. Best
+   practice is one observer for all elements.
 
-1. **LazyGroup IntersectionObserver**: is the observer actually firing? Does
-   `root: null` (viewport) work correctly in the Electron renderer context?
-   Could the Svelte 5 reactivity cycle (`$state`, `$derived`, `$effect`) interfere
-   with the observer callbacks?
+3. **Layout cascade**: When a LazyGroup switches from 280px placeholder to real
+   content, the reflow triggers observer callbacks on adjacent groups, causing a
+   chain reaction of renders and thumbnail requests.
 
-2. **Tabbed UI impact (TASK-059)**: did the refactoring to tabs change the scroll
-   context? Is there a hidden `overflow` container between the viewport root and
-   the groups that would prevent IntersectionObserver from detecting visibility?
+4. **`loading="lazy"` broken**: The tabbed UI (TASK-059) changed the layout structure.
+   `flex-1` on the intermediate container may prevent Chromium from correctly
+   calculating off-screen positions for lazy loading.
 
-3. **Native `loading="lazy"` regression**: the user says `<img loading="lazy">`
-   worked before v0.5 but stopped working after the tabbed UI refactoring. This
-   suggests a layout/scroll container change, not a LazyGroup bug.
+5. **No thumbnail cache**: Every screen open regenerates all thumbnails via sharp.
 
-4. **Electron-specific behavior**: does Chromium's IntersectionObserver behave
-   differently in Electron's renderer process? Any known quirks?
+## Solution: collapsed-by-default groups
 
-5. **Alternative approaches** if IntersectionObserver proves unreliable:
-   - Virtual scroll library (e.g., `svelte-virtual-scroll`)
-   - Manual scroll-position-based windowing
-   - Hard cap on rendered groups + scroll-triggered loading
-   - Simply removing all thumbnails and showing only text until user clicks "expand"
+| Aspect | Before | After |
+|--------|--------|-------|
+| Initial render | Thumbnails visible immediately | **Collapsed groups** (text: filename, size, date) |
+| Expansion | Automatic (IntersectionObserver) | **Click to expand** per group |
+| Expand all | N/A | **"Expand all" button** |
+| LazyGroup | 1 observer per group (320x) | **Removed** — not needed |
+| Pagination | "Show more" adds 20 groups | **All groups shown** in compact text rows |
+| Thumbnail throttle | None | **Concurrency limit** (max 6 simultaneous via protocol) |
 
 ## Deliverables
 
-- [ ] Root cause analysis: why IntersectionObserver virtualization doesn't work
-- [ ] Determine if the tabbed UI (TASK-059) broke the scroll/viewport context
-- [ ] Implement a working solution that handles 600+ groups without freezing
-- [ ] Verify `loading="lazy"` still works on `<img>` elements
+- [x] Root cause analysis documented
+- [x] Rewrite `DeduplicationScreen.svelte` — collapsed-by-default, expand/collapse per group, expand all
+- [x] Remove `LazyGroup.svelte` (no longer used)
+- [x] Add concurrency throttle to `protocol.ts` thumbnail handler
+- [x] Tests: 584 passed, 100% coverage
 
-## Files likely involved
+## Files changed
 
-| File | Relevance |
-|------|-----------|
-| `src/renderer/src/components/LazyGroup.svelte` | IntersectionObserver wrapper |
-| `src/renderer/src/screens/DeduplicationScreen.svelte` | Uses LazyGroup |
-| `src/renderer/src/App.svelte` | Tab layout, scroll container? |
-| `src/renderer/src/screens/LibraryTab.svelte` | Parent of DeduplicationScreen |
-| `src/renderer/src/components/ui/TabBar.svelte` | Tab navigation |
-| `src/renderer/src/components/PhotoThumbnail.svelte` | `loading="lazy"` on `<img>` |
+| File | Change |
+|------|--------|
+| `src/renderer/src/screens/DeduplicationScreen.svelte` | Complete rewrite |
+| `src/renderer/src/components/LazyGroup.svelte` | **Deleted** |
+| `src/main/protocol.ts` | Add concurrency throttle |
+
+## IPC channels
+
+No new IPC channels. Existing channels unchanged.
