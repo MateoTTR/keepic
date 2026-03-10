@@ -8,6 +8,37 @@ import { createThumbnailGenerator, type ThumbnailGenerator } from './thumbnail'
 export type LibraryPathGetter = () => string | null
 
 // ---------------------------------------------------------------------------
+// Concurrency throttle
+// ---------------------------------------------------------------------------
+
+const MAX_CONCURRENT_THUMBNAILS = 6
+
+export function createThrottle(maxConcurrent: number): <T>(fn: () => Promise<T>) => Promise<T> {
+  let active = 0
+  const queue: Array<{ run: () => void }> = []
+
+  return <T>(fn: () => Promise<T>): Promise<T> => {
+    return new Promise<T>((resolve, reject) => {
+      const run = (): void => {
+        active++
+        fn().then(resolve, reject).finally(() => {
+          active--
+          if (queue.length > 0) {
+            queue.shift()!.run()
+          }
+        })
+      }
+
+      if (active < maxConcurrent) {
+        run()
+      } else {
+        queue.push({ run })
+      }
+    })
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Protocol handler
 // ---------------------------------------------------------------------------
 
@@ -25,8 +56,11 @@ const DEFAULT_MAX_DIM = 300
  */
 export function createProtocolHandler(
   getLibraryPath: LibraryPathGetter,
-  thumbnailGenerator: ThumbnailGenerator = createThumbnailGenerator()
+  thumbnailGenerator: ThumbnailGenerator = createThumbnailGenerator(),
+  maxConcurrent: number = MAX_CONCURRENT_THUMBNAILS
 ): (request: Request) => Promise<Response> {
+  const throttle = createThrottle(maxConcurrent)
+
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url)
     const absolutePath = url.searchParams.get('path')
@@ -55,7 +89,7 @@ export function createProtocolHandler(
     }
 
     try {
-      const result = await thumbnailGenerator(resolvedPath, { maxDim })
+      const result = await throttle(() => thumbnailGenerator(resolvedPath, { maxDim }))
       return new Response(new Uint8Array(result.buffer), {
         headers: {
           'Content-Type': result.contentType,
