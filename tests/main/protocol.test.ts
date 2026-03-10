@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createProtocolHandler, type LibraryPathGetter } from '../../src/main/protocol'
+import { createProtocolHandler, createThrottle, type LibraryPathGetter } from '../../src/main/protocol'
 import type { ThumbnailGenerator } from '../../src/main/thumbnail'
 
 // ---------------------------------------------------------------------------
@@ -178,5 +178,122 @@ describe('createProtocolHandler', () => {
 
       expect(calls[0].path).toBe('/abs/IMG.jpg')
     })
+  })
+
+  describe('concurrency throttle', () => {
+    it('limits concurrent thumbnail generation', async () => {
+      let active = 0
+      let maxSeen = 0
+      const resolvers: Array<() => void> = []
+
+      const slowGenerator: ThumbnailGenerator = async () => {
+        active++
+        maxSeen = Math.max(maxSeen, active)
+        await new Promise<void>((resolve) => resolvers.push(resolve))
+        active--
+        return { buffer: Buffer.from([0xff]), contentType: 'image/jpeg' }
+      }
+
+      const handler = createProtocolHandler(() => null, slowGenerator, 2)
+
+      // Fire 4 concurrent requests
+      const p1 = handler(makeRequest('keepic-photo://thumbnail?path=/a.jpg'))
+      const p2 = handler(makeRequest('keepic-photo://thumbnail?path=/b.jpg'))
+      const p3 = handler(makeRequest('keepic-photo://thumbnail?path=/c.jpg'))
+      const p4 = handler(makeRequest('keepic-photo://thumbnail?path=/d.jpg'))
+
+      // Allow microtasks to run
+      await new Promise((r) => setTimeout(r, 10))
+
+      // Only 2 should be active
+      expect(active).toBe(2)
+      expect(resolvers).toHaveLength(2)
+
+      // Complete first two → next two start
+      resolvers[0]()
+      resolvers[1]()
+      await new Promise((r) => setTimeout(r, 10))
+
+      expect(active).toBe(2)
+      expect(resolvers).toHaveLength(4)
+
+      // Complete remaining
+      resolvers[2]()
+      resolvers[3]()
+
+      const [r1, r2, r3, r4] = await Promise.all([p1, p2, p3, p4])
+      expect(r1.status).toBe(200)
+      expect(r2.status).toBe(200)
+      expect(r3.status).toBe(200)
+      expect(r4.status).toBe(200)
+      expect(maxSeen).toBe(2)
+    })
+  })
+})
+
+describe('createThrottle', () => {
+  it('runs tasks immediately when under limit', async () => {
+    const throttle = createThrottle(3)
+    const results: number[] = []
+
+    await Promise.all([
+      throttle(async () => { results.push(1) }),
+      throttle(async () => { results.push(2) }),
+      throttle(async () => { results.push(3) })
+    ])
+
+    expect(results).toHaveLength(3)
+  })
+
+  it('queues and dequeues tasks beyond the limit', async () => {
+    const throttle = createThrottle(1)
+    const order: number[] = []
+    const resolvers: Array<() => void> = []
+
+    const makeTask = (id: number) => throttle(async () => {
+      await new Promise<void>((r) => resolvers.push(r))
+      order.push(id)
+    })
+
+    const p1 = makeTask(1)
+    const p2 = makeTask(2)
+    const p3 = makeTask(3)
+
+    await new Promise((r) => setTimeout(r, 10))
+    expect(resolvers).toHaveLength(1) // only first running
+
+    resolvers[0]() // complete first → second starts
+    await new Promise((r) => setTimeout(r, 10))
+    expect(resolvers).toHaveLength(2)
+
+    resolvers[1]() // complete second → third starts
+    await new Promise((r) => setTimeout(r, 10))
+    expect(resolvers).toHaveLength(3)
+
+    resolvers[2]() // complete third
+    await Promise.all([p1, p2, p3])
+
+    expect(order).toEqual([1, 2, 3])
+  })
+
+  it('propagates errors without blocking the queue', async () => {
+    const throttle = createThrottle(1)
+    const resolvers: Array<() => void> = []
+
+    const p1 = throttle(async () => {
+      throw new Error('fail')
+    })
+    const p2 = throttle(async () => {
+      await new Promise<void>((r) => resolvers.push(r))
+      return 'ok'
+    })
+
+    await expect(p1).rejects.toThrow('fail')
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(resolvers).toHaveLength(1)
+    resolvers[0]()
+    const result = await p2
+    expect(result).toBe('ok')
   })
 })

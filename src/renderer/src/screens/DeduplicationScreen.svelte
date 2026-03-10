@@ -2,7 +2,6 @@
   import { onMount, onDestroy } from 'svelte'
   import Button from '../components/ui/Button.svelte'
   import PhotoThumbnail from '../components/PhotoThumbnail.svelte'
-  import LazyGroup from '../components/LazyGroup.svelte'
   import { thumbnailUrl } from '../utils'
   import type { DuplicateGroup } from '../../../shared/types'
 
@@ -15,6 +14,9 @@
   let loading: boolean = $state(true)
   let groups: DuplicateGroup[] = $state([])
   let progress: { processed: number; total: number } | null = $state(null)
+
+  // Track which groups are expanded (show thumbnails)
+  let expandedSet: Set<string> = $state(new Set())
 
   onMount(() => {
     window.keepic.library.onDedupProgress((p) => {
@@ -43,14 +45,29 @@
     return new Date(iso).toLocaleDateString()
   }
 
-  const PAGE_SIZE = 20
-  let visibleCount: number = $state(PAGE_SIZE)
+  function toggleGroup(phash: string): void {
+    const next = new Set(expandedSet)
+    if (next.has(phash)) {
+      next.delete(phash)
+    } else {
+      next.add(phash)
+    }
+    expandedSet = next
+  }
+
+  function expandAll(): void {
+    expandedSet = new Set(groups.map((g) => g.phash))
+  }
+
+  function collapseAll(): void {
+    expandedSet = new Set()
+  }
 
   const totalPhotos = $derived(groups.reduce((sum, g) => sum + g.photos.length, 0))
   const photoGroups = $derived(groups.filter((g) => g.mediaType === 'photo').length)
   const videoGroups = $derived(groups.filter((g) => g.mediaType === 'video').length)
-  const visibleGroups = $derived(groups.slice(0, visibleCount))
-  const hasMore = $derived(visibleCount < groups.length)
+  const allExpanded = $derived(groups.length > 0 && expandedSet.size === groups.length)
+  const someExpanded = $derived(expandedSet.size > 0)
   const progressPercent = $derived(
     progress && progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0
   )
@@ -79,66 +96,91 @@
         <p class="text-gray-500">Loading…</p>
       {/if}
     {:else if groups.length === 0}
-      <p class="text-gray-700">✓ No duplicates found</p>
+      <p class="text-gray-700">No duplicates found.</p>
     {:else}
-      <p class="text-gray-700">
-        {groups.length} duplicate {groups.length === 1 ? 'group' : 'groups'} found ({totalPhotos} file{totalPhotos !== 1 ? 's' : ''} total{#if videoGroups > 0 && photoGroups > 0} — {photoGroups} photo, {videoGroups} video{/if})
-      </p>
+      <div class="flex items-center justify-between">
+        <p class="text-gray-700">
+          {groups.length} duplicate {groups.length === 1 ? 'group' : 'groups'} found ({totalPhotos} file{totalPhotos !== 1 ? 's' : ''} total{#if videoGroups > 0 && photoGroups > 0} — {photoGroups} photo, {videoGroups} video{/if})
+        </p>
+        <div class="flex gap-2">
+          {#if allExpanded}
+            <Button variant="outline" size="sm" onclick={collapseAll}>Collapse all</Button>
+          {:else}
+            <Button variant="outline" size="sm" onclick={expandAll}>Expand all</Button>
+          {/if}
+          {#if someExpanded && !allExpanded}
+            <Button variant="outline" size="sm" onclick={collapseAll}>Collapse all</Button>
+          {/if}
+        </div>
+      </div>
 
       <hr class="border-gray-200" />
 
-      <div class="space-y-6">
-        {#each visibleGroups as group, i (group.phash)}
-          <LazyGroup>
-            <div class="space-y-2">
-              <p class="text-sm font-semibold text-gray-700">
-                Group {i + 1} — {group.photos.length} identical {group.mediaType === 'video' ? 'videos' : 'photos'}
-              </p>
-              <div class="flex flex-wrap gap-4">
-                {#each group.photos as photo (photo.path)}
-                  {@const lastSlash = photo.path.lastIndexOf('/')}
-                  {@const folder = lastSlash >= 0 ? photo.path.slice(0, lastSlash) : ''}
-                  {@const filename = lastSlash >= 0 ? photo.path.slice(lastSlash + 1) : photo.path}
-                  <div class="w-48 space-y-2">
-                    <PhotoThumbnail
-                      src={thumbnailUrl({ libraryRelPath: photo.path })}
-                      alt={photo.filename}
-                      class="w-full aspect-auto"
-                    />
-                    <div class="space-y-0.5">
-                      <p class="font-mono text-xs text-gray-900 font-medium break-all" title={photo.path}>{filename}</p>
-                      {#if folder}
-                        <p class="font-mono text-[10px] text-gray-400 truncate" title={folder}>{folder}</p>
-                      {/if}
-                      <p class="text-xs text-gray-400">
-                        {formatBytes(photo.fileSize)}
-                        <span class="mx-1">&middot;</span>
-                        {formatDate(photo.dateTaken)}
-                      </p>
-                      <Button variant="outline" size="sm" onclick={() => window.keepic.shell.revealLibraryFile(photo.path)}>
-                        Reveal in Folder
-                      </Button>
+      <div class="space-y-1">
+        {#each groups as group, i (group.phash)}
+          {@const isExpanded = expandedSet.has(group.phash)}
+          <div class="border border-gray-100 rounded-lg">
+            <!-- Collapsed header — always visible -->
+            <button
+              class="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+              onclick={() => toggleGroup(group.phash)}
+            >
+              <span class="text-gray-400 text-xs w-4 flex-shrink-0">{isExpanded ? '▼' : '▶'}</span>
+              <span class="text-sm font-semibold text-gray-700 flex-shrink-0">
+                Group {i + 1}
+              </span>
+              <span class="text-sm text-gray-500">
+                — {group.photos.length} identical {group.mediaType === 'video' ? 'videos' : 'photos'}
+              </span>
+              <span class="text-xs text-gray-400 ml-auto truncate max-w-xs font-mono">
+                {group.photos.map((p) => {
+                  const slash = p.path.lastIndexOf('/')
+                  return slash >= 0 ? p.path.slice(slash + 1) : p.path
+                }).join(', ')}
+              </span>
+            </button>
+
+            <!-- Expanded content — thumbnails -->
+            {#if isExpanded}
+              <div class="px-4 pb-4">
+                <div class="flex flex-wrap gap-4">
+                  {#each group.photos as photo (photo.path)}
+                    {@const lastSlash = photo.path.lastIndexOf('/')}
+                    {@const folder = lastSlash >= 0 ? photo.path.slice(0, lastSlash) : ''}
+                    {@const filename = lastSlash >= 0 ? photo.path.slice(lastSlash + 1) : photo.path}
+                    <div class="w-48 space-y-2">
+                      <PhotoThumbnail
+                        src={thumbnailUrl({ libraryRelPath: photo.path })}
+                        alt={photo.filename}
+                        class="w-full aspect-auto"
+                      />
+                      <div class="space-y-0.5">
+                        <p class="font-mono text-xs text-gray-900 font-medium break-all" title={photo.path}>{filename}</p>
+                        {#if folder}
+                          <p class="font-mono text-[10px] text-gray-400 truncate" title={folder}>{folder}</p>
+                        {/if}
+                        <p class="text-xs text-gray-400">
+                          {formatBytes(photo.fileSize)}
+                          <span class="mx-1">&middot;</span>
+                          {formatDate(photo.dateTaken)}
+                        </p>
+                        <Button variant="outline" size="sm" onclick={() => window.keepic.shell.revealLibraryFile(photo.path)}>
+                          Reveal in Folder
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                {/each}
+                  {/each}
+                </div>
               </div>
-            </div>
-          </LazyGroup>
+            {/if}
+          </div>
         {/each}
       </div>
-
-      {#if hasMore}
-        <div class="flex justify-center">
-          <Button variant="outline" onclick={() => (visibleCount += PAGE_SIZE)}>
-            Show more ({groups.length - visibleCount} remaining)
-          </Button>
-        </div>
-      {/if}
 
       <hr class="border-gray-200" />
 
       <p class="text-sm text-gray-500">
-        Showing {visibleGroups.length} of {groups.length} groups. To remove duplicates: delete the unwanted files from the shared folder, then re-index.
+        {groups.length} groups displayed. Click a group to preview thumbnails. To remove duplicates: delete the unwanted files from the shared folder, then re-index.
       </p>
     {/if}
   </div>
