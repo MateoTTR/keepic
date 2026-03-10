@@ -322,7 +322,7 @@ export async function buildImportPlan(
       const candidates = libraryIndex.queryCandidates(r.phashResult.phash)
       for (const ci of candidates) {
         const lib = libraryHashes[ci]
-        if (isDualHashMatch(r.phashResult.phash, r.phashResult.dhash, lib.phash, lib.dhash)) {
+        if (isDualHashMatch(r.phashResult.phash, r.phashResult.dhash, lib.phash, lib.dhash, config.dedupThreshold)) {
           status = 'duplicate'
           duplicateOf = lib.path
           break
