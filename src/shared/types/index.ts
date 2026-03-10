@@ -177,6 +177,7 @@ export interface DuplicatePhoto {
 }
 
 export interface DuplicateGroup {
+  id: string
   phash: string
   mediaType: MediaType
   photos: DuplicatePhoto[] // always 2+ items, sorted by importedAt ASC

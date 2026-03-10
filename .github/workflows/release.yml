@@ -26,7 +26,15 @@ jobs:
       - name: Install dependencies (skip native addon build)
         run: npm ci --ignore-scripts
 
+      - name: Cache HEIF static libraries
+        id: heif-cache
+        uses: actions/cache@v4
+        with:
+          path: packages/heif-decode/deps
+          key: heif-deps-windows-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
+
       - name: Build static HEIF dependencies
+        if: steps.heif-cache.outputs.cache-hit != 'true'
         shell: bash
         working-directory: packages/heif-decode
         run: bash scripts/build-deps.sh
@@ -65,7 +73,15 @@ jobs:
       - name: Install dependencies (skip native addon build)
         run: npm ci --ignore-scripts
 
+      - name: Cache HEIF static libraries
+        id: heif-cache
+        uses: actions/cache@v4
+        with:
+          path: packages/heif-decode/deps
+          key: heif-deps-macos-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
+
       - name: Build static HEIF dependencies
+        if: steps.heif-cache.outputs.cache-hit != 'true'
         shell: bash
         working-directory: packages/heif-decode
         run: bash scripts/build-deps.sh
