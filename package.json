@@ -19,17 +19,18 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "build:heif-static": "node-gyp rebuild --heif_static=true --directory=packages/heif-decode",
     "package:win": "npm run build && electron-builder --win --publish never",
     "package:mac": "npm run build && electron-builder --mac --publish never"
   },
   "dependencies": {
+    "@keepic/heif-decode": "file:packages/heif-decode",
     "better-sqlite3": "^11.0.0",
     "bits-ui": "^2.16.2",
     "clsx": "^2.1.1",
     "electron-updater": "^6.1.7",
     "exifreader": "^4.36.2",
     "keytar": "^7.9.0",
-    "@keepic/heif-decode": "file:packages/heif-decode",
     "sharp": "^0.33.3",
     "tailwind-variants": "^3.2.2"
   },
@@ -48,6 +49,7 @@
     "electron-vite": "^2.3.0",
     "eslint": "^8.57.0",
     "eslint-plugin-svelte": "^3.15.0",
+    "node-gyp": "^12.4.0",
     "postcss": "^8.5.6",
     "prettier": "^3.3.2",
     "svelte": "^5.53.2",

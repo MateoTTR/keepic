@@ -35,6 +35,14 @@ if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] ||
   MSVC_STATIC_DEFINES="-DCMAKE_C_FLAGS=-DLIBDE265_STATIC_BUILD -DCMAKE_CXX_FLAGS=-DLIBDE265_STATIC_BUILD"
 fi
 
+# On macOS, target the same minimum version as the addon (binding.gyp
+# MACOSX_DEPLOYMENT_TARGET). Otherwise the static libs target the runner's
+# macOS version and may use APIs missing on older systems.
+OSX_FLAGS=""
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  OSX_FLAGS="-DCMAKE_OSX_DEPLOYMENT_TARGET=12.0"
+fi
+
 # ---------------------------------------------------------------------------
 # Download sources if not present
 # ---------------------------------------------------------------------------
@@ -66,6 +74,7 @@ cmake -S "$DE265_SRC" -B "$DE265_BUILD" \
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
   $MSVC_RUNTIME_FLAG \
+  $OSX_FLAGS \
   -DBUILD_SHARED_LIBS=OFF \
   -DENABLE_ENCODER=OFF \
   -DENABLE_DECODER=ON \
@@ -88,6 +97,7 @@ cmake -S "$HEIF_SRC" -B "$HEIF_BUILD" \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
   $MSVC_RUNTIME_FLAG \
   $MSVC_STATIC_DEFINES \
+  $OSX_FLAGS \
   -DBUILD_SHARED_LIBS=OFF \
   -DWITH_EXAMPLES=OFF \
   -DWITH_GDK_PIXBUF=OFF \
