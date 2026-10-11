@@ -14,7 +14,12 @@ env:
 jobs:
   build-windows:
     name: Build Windows installer
-    runs-on: windows-latest
+    # Pinned to VS 2022: heif_decode.node built with VS 2026 (windows-latest
+    # since June 2026) fails DLL initialization on some Windows Server 2025
+    # machines ("A dynamic link library (DLL) initialization routine failed"),
+    # while the VS 2022 build loads everywhere. See TASK-075. The cache key
+    # names the toolchain so VS 2026-built deps are never restored here.
+    runs-on: windows-2022
 
     steps:
       - name: Checkout
@@ -40,7 +45,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: packages/heif-decode/deps
-          key: heif-deps-windows-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
+          key: heif-deps-windows-2022-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
 
       - name: Build static HEIF dependencies
         if: steps.heif-cache.outputs.cache-hit != 'true'
