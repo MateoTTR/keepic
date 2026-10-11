@@ -1,11 +1,20 @@
 name: Warm HEIF deps cache
 
+# Release builds run on tag refs, which can only restore caches saved on the
+# default branch (main). This workflow keeps the main-scoped HEIF deps cache
+# alive so releases can skip building libde265 + libheif from source:
+# - on every push to main, i.e. right after a release PR is merged
+# - twice a week, because GitHub evicts caches not accessed for 7 days
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - 'packages/heif-decode/scripts/build-deps.sh'
+  schedule:
+    - cron: '0 6 * * 1,4'
+
+concurrency:
+  group: warm-heif-deps-cache
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -19,29 +28,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Check existing cache
-        id: check
-        uses: actions/cache/restore@v4
+      # Full restore (not lookup-only) so the cache's last-access time is
+      # refreshed; on a miss, the post step saves the freshly built deps.
+      - name: Restore or create HEIF deps cache
+        id: heif-cache
+        uses: actions/cache@v4
         with:
           path: packages/heif-decode/deps
           key: heif-deps-windows-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
-          lookup-only: true
+
+      - name: Setup MSVC
+        if: steps.heif-cache.outputs.cache-hit != 'true'
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Build static HEIF dependencies
-        if: steps.check.outputs.cache-hit != 'true'
+        if: steps.heif-cache.outputs.cache-hit != 'true'
         shell: bash
         working-directory: packages/heif-decode
         run: bash scripts/build-deps.sh
-
-      - name: Save cache
-        if: steps.check.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: packages/heif-decode/deps
-          key: heif-deps-windows-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
 
   cache-macos:
     name: Cache HEIF deps (macOS)
@@ -51,23 +55,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check existing cache
-        id: check
-        uses: actions/cache/restore@v4
+      - name: Restore or create HEIF deps cache
+        id: heif-cache
+        uses: actions/cache@v4
         with:
           path: packages/heif-decode/deps
           key: heif-deps-macos-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
-          lookup-only: true
 
       - name: Build static HEIF dependencies
-        if: steps.check.outputs.cache-hit != 'true'
+        if: steps.heif-cache.outputs.cache-hit != 'true'
         shell: bash
         working-directory: packages/heif-decode
         run: bash scripts/build-deps.sh
-
-      - name: Save cache
-        if: steps.check.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: packages/heif-decode/deps
-          key: heif-deps-macos-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
