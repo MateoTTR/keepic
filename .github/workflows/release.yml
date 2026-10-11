@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  # Dry run: build and verify both installers on any branch without
+  # publishing a GitHub Release (create-release only runs for tags).
+  workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -46,14 +49,35 @@ jobs:
         run: bash scripts/build-deps.sh
 
       - name: Build HEIF addon with static linking
-        working-directory: packages/heif-decode
-        run: npx node-gyp rebuild --heif_static=true
+        run: npm run build:heif-static
 
+      # electron-builder runs `npm rebuild` on native deps while packaging. If
+      # node-gyp-build rejects the addon built above, it rebuilds from source:
+      # npm_config_heif_static makes that rebuild static too (node-gyp passes
+      # npm_config_* through as gyp variables), and the node-gyp devDependency
+      # is used instead of npm's bundled one, which predates VS 2026.
       - name: Build and package (Windows)
         run: npm run package:win
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          npm_config_heif_static: 'true'
+
+      # The packaged addon must embed libheif/libde265 statically. The smoke
+      # test decodes real HEIC files with the same build/Release binary that
+      # electron-builder copied into the app.
+      - name: Verify packaged HEIF addon
+        run: |
+          $addon = "dist-electron/win-unpacked/resources/app.asar.unpacked/node_modules/@keepic/heif-decode/build/Release/heif_decode.node"
+          if (-not (Test-Path $addon)) { Write-Error "Missing $addon"; exit 1 }
+          $deps = dumpbin /dependents $addon | Out-String
+          if ($LASTEXITCODE -ne 0) { Write-Error "dumpbin failed"; exit 1 }
+          Write-Output $deps
+          if ($deps -match '(?im)^\s+\S*(heif|de265)\S*\.dll\s*$') {
+            Write-Error "heif_decode.node is dynamically linked to libheif/libde265"
+            exit 1
+          }
+          node packages/heif-decode/test/smoke-test.js
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
@@ -96,14 +120,25 @@ jobs:
         run: bash scripts/build-deps.sh
 
       - name: Build HEIF addon with static linking
-        working-directory: packages/heif-decode
-        run: npx node-gyp rebuild --heif_static=true
+        run: npm run build:heif-static
 
+      # See the Windows job for why npm_config_heif_static is set here.
       - name: Build and package (macOS)
         run: npm run package:mac
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          npm_config_heif_static: 'true'
+
+      - name: Verify packaged HEIF addon
+        run: |
+          ADDON="dist-electron/mac-arm64/KeePic.app/Contents/Resources/app.asar.unpacked/node_modules/@keepic/heif-decode/build/Release/heif_decode.node"
+          otool -L "$ADDON"
+          if otool -L "$ADDON" | tail -n +2 | grep -iE 'heif|de265'; then
+            echo "::error::heif_decode.node is dynamically linked to libheif/libde265"
+            exit 1
+          fi
+          node packages/heif-decode/test/smoke-test.js
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
@@ -114,6 +149,7 @@ jobs:
 
   create-release:
     name: Create GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     needs: [build-windows, build-macos]
     permissions:
