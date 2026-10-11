@@ -29,6 +29,10 @@ The repository is public, so Actions minutes are free. The cache only affects re
 - Gate the deps build on `steps.heif-cache.outputs.cache-hit != 'true'` instead of testing for a file.
 - A cache miss still falls back to building from source, so releases never depend on the cache being present.
 
+### `ci.yml` — refresh the APT index before installing system deps
+
+Found while running CI for this task. The CI job ran `apt-get install` without `apt-get update`. The runner image's package index pointed to `libde265 1.0.15-1ubuntu0.1`, which the Ubuntu mirrors no longer serve (404), so every CI run failed at "Install system dependencies". Fixed by running `sudo apt-get update` first.
+
 ## Release procedure change
 
 After merging a release PR into `main`:
@@ -54,4 +58,5 @@ If the tag is pushed earlier, the release still works; it just rebuilds the deps
 |---|---|
 | `.github/workflows/cache-heif-deps.yml` | Push/schedule triggers, full restore via `actions/cache@v4`, concurrency group |
 | `.github/workflows/release.yml` | Exact-key restore, build gated on `cache-hit` |
+| `.github/workflows/ci.yml` | `apt-get update` before installing system deps |
 | `docs/tasks/TASK-072-fix-ci-heif-cache.md` | This file |
