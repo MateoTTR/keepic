@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*.*.*'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-windows:
     name: Build Windows installer
@@ -26,14 +29,15 @@ jobs:
       - name: Install dependencies (skip native addon build)
         run: npm ci --ignore-scripts
 
-      - name: Cache HEIF static libraries
+      # Exact key only: a prefix fallback could restore deps built by an older
+      # build-deps.sh (e.g. a previous libheif version). The main-scoped cache
+      # is kept warm by cache-heif-deps.yml; on a miss, deps are built here.
+      - name: Restore HEIF static libraries from cache
         id: heif-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: packages/heif-decode/deps
           key: heif-deps-windows-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
-          restore-keys: |
-            heif-deps-windows-
 
       - name: Build static HEIF dependencies
         if: steps.heif-cache.outputs.cache-hit != 'true'
@@ -75,14 +79,15 @@ jobs:
       - name: Install dependencies (skip native addon build)
         run: npm ci --ignore-scripts
 
-      - name: Cache HEIF static libraries
+      # Exact key only: a prefix fallback could restore deps built by an older
+      # build-deps.sh (e.g. a previous libheif version). The main-scoped cache
+      # is kept warm by cache-heif-deps.yml; on a miss, deps are built here.
+      - name: Restore HEIF static libraries from cache
         id: heif-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: packages/heif-decode/deps
           key: heif-deps-macos-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
-          restore-keys: |
-            heif-deps-macos-
 
       - name: Build static HEIF dependencies
         if: steps.heif-cache.outputs.cache-hit != 'true'

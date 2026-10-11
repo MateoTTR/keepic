@@ -3,8 +3,19 @@ name: CI
 on:
   push:
     branches: [main, develop]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
   pull_request:
     branches: [main, develop]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   ci:
@@ -22,7 +33,7 @@ jobs:
           cache: 'npm'
 
       - name: Install system dependencies
-        run: sudo apt-get install -y libsecret-1-dev libheif-dev
+        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev libheif-dev
 
       - name: Install dependencies
         run: npm ci
