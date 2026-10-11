@@ -51,6 +51,9 @@ All three items in Electron's [32.0 breaking changes](https://github.com/electro
 | File | Change |
 |---|---|
 | `package.json` | `electron` `^31.0.0` → `^32.0.0` |
-| `package-lock.json` | `electron` 31.7.7 → 32.3.3 |
+| `package-lock.json` | `electron` 31.7.7 → 32.3.3 (edited by hand, see note below) |
+| `.github/workflows/ci.yml` | `apt-get update` before installing system deps (same change as TASK-072, so CI can run on this PR) |
 | `docs/tasks/TASK-071-fix-electron-xprotect.md` | This file |
 | `docs/tasks/backlog.md` | Add TASK-071 |
+
+> **Lockfile note**: running `npm install` with npm 11 (Node 24) pruned an optional peer entry (`svelte-check/node_modules/picomatch`) and re-sorted dependencies. npm 10 in CI (Node 20) then rejected the lockfile as out of sync (`npm ci` EUSAGE). The lockfile was rebuilt from `develop` with only the `electron` spec and resolved entry changed (integrity checked against the registry). The new entry declares the same dependencies as 31.7.7.
