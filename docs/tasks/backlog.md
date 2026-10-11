@@ -301,6 +301,17 @@
 
 ---
 
+## Phase 21 — macOS XProtect & CI Maintenance (v0.5.9)
+
+> macOS XProtect (definitions ~5358, May 2026) falsely flags the Electron 31.7.7 binary as malware:
+> KeePic v0.5.8 is killed on launch and moved to the Trash; `xattr -cr` no longer helps.
+
+| # | Title | Priority | Status | Session |
+|---|---|---|---|---|
+| [TASK-071-fix](TASK-071-fix-electron-xprotect.md) | Fix macOS "Malware Blocked" — bump Electron 31.7.7 → 32.3.3 (XProtect false positive) | P0 | `[~]` | 2026-10-11-session-063 |
+
+---
+
 ## Upcoming / Not Yet Planned
 
 - In-app browse/viewer (deferred)
