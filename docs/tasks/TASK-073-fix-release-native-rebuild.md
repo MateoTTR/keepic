@@ -49,7 +49,9 @@ So it is probably fine, but it depends on the runner image.
 
 - Local (Linux, Node 22): `npm run build:heif-static` → node-gyp 12.4.0, static binary, smoke test passes. `npm_config_heif_static=true node-gyp rebuild` (no CLI flag) → static binary.
 - Lint, typecheck and tests on CI.
-- **Dry run of `release.yml` via `workflow_dispatch` on this branch**: both installers are built and both "Verify packaged HEIF addon" steps pass.
+- **Dry run of `release.yml` via `workflow_dispatch` on this branch** ([run 38149894336](https://github.com/MateoTTR/keepic/actions/runs/38149894336)): both jobs green, `create-release` skipped (not a tag).
+  - Windows: `KeePic Setup 0.5.9.exe` built. The packaged `heif_decode.node` depends only on `KERNEL32.dll` plus delay-loaded `node.exe`. HEIC smoke test (standard + Apple HDR) passes.
+  - macOS: `KeePic-0.5.9-arm64.dmg` built. `otool -L` shows only `libSystem` and `libc++`. Smoke test passes. The "built for newer 'macOS' version (26.0)" linker warnings are gone (0, vs. 40 before the deployment target fix).
 
 ## Files Changed
 
