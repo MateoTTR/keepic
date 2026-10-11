@@ -22,7 +22,8 @@ env:
 jobs:
   cache-windows:
     name: Cache HEIF deps (Windows)
-    runs-on: windows-latest
+    # Must match the release build toolchain (VS 2022), see release.yml
+    runs-on: windows-2022
 
     steps:
       - name: Checkout
@@ -35,7 +36,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: packages/heif-decode/deps
-          key: heif-deps-windows-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
+          key: heif-deps-windows-2022-${{ hashFiles('packages/heif-decode/scripts/build-deps.sh') }}
 
       - name: Setup MSVC
         if: steps.heif-cache.outputs.cache-hit != 'true'

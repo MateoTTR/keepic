@@ -310,7 +310,8 @@
 |---|---|---|---|---|
 | [TASK-071-fix](TASK-071-fix-electron-xprotect.md) | Fix macOS "Malware Blocked" — bump Electron 31.7.7 → 32.3.3 (XProtect false positive) | P0 | `[x]` | 2026-10-11-session-063 |
 | [TASK-072-fix](TASK-072-fix-ci-heif-cache.md) | Keep main-scoped HEIF deps cache warm for release builds + `apt-get update` in CI | P2 | `[x]` | 2026-10-11-session-063 |
-| [TASK-073-fix](TASK-073-fix-release-native-rebuild.md) | Fix v0.5.9 Windows release — electron-builder native rebuild fails on VS 2026 runner; pin node-gyp 12, static rebuild env, packaged addon verification, release dry run, macOS deployment target | P0 | `[~]` | 2026-10-11-session-063 |
+| [TASK-073-fix](TASK-073-fix-release-native-rebuild.md) | Fix v0.5.9 Windows release — electron-builder native rebuild fails on VS 2026 runner; pin node-gyp 12, static rebuild env, packaged addon verification, release dry run, macOS deployment target | P0 | `[x]` | 2026-10-11-session-063 |
+| [TASK-075-fix](TASK-075-fix-windows-vs2022-toolchain.md) | Build Windows release with VS 2022 (`windows-2022`) — VS 2026-built addon fails DLL init on 2/8 runners (24/24 OK with VS 2022) | P0 | `[~]` | 2026-10-11-session-063 |
 | TASK-074-refactor | Upgrade to a supported Electron (44.x) + electron-builder 26 + better-sqlite3 13; consider ad hoc signing so macOS shows "Open Anyway" instead of requiring `xattr` | P2 | `[ ]` | — |
 
 ---
