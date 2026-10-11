@@ -23,13 +23,13 @@
     "package:mac": "npm run build && electron-builder --mac --publish never"
   },
   "dependencies": {
-    "@keepic/heif-decode": "file:packages/heif-decode",
     "better-sqlite3": "^11.0.0",
     "bits-ui": "^2.16.2",
     "clsx": "^2.1.1",
     "electron-updater": "^6.1.7",
     "exifreader": "^4.36.2",
     "keytar": "^7.9.0",
+    "@keepic/heif-decode": "file:packages/heif-decode",
     "sharp": "^0.33.3",
     "tailwind-variants": "^3.2.2"
   },
@@ -43,7 +43,7 @@
     "@tailwindcss/postcss": "^4.2.0",
     "@types/better-sqlite3": "^7.6.12",
     "@vitest/coverage-v8": "^2.0.0",
-    "electron": "^32.3.3",
+    "electron": "^32.0.0",
     "electron-builder": "^24.13.3",
     "electron-vite": "^2.3.0",
     "eslint": "^8.57.0",
