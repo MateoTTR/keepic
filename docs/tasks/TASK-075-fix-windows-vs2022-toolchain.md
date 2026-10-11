@@ -54,7 +54,7 @@ The TASK-073 safeguards stay in place:
 ## Verification
 
 - Diagnostic matrix above.
-- `release.yml` dry run on this branch: Windows job on `windows-2022`, packaged-addon verification and HEIC smoke test pass.
+- `release.yml` dry run on this branch ([run 38154699026](https://github.com/MateoTTR/keepic/actions/runs/38154699026)): Windows job on `windows-2022`. Packaged addon depends only on `KERNEL32.dll` plus delay-loaded `node.exe`. HEIC smoke test passes on both platforms.
 
 ## Files Changed
 
